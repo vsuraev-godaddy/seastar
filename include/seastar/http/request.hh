@@ -184,6 +184,11 @@ struct request {
         set_mime_type(http::mime_types::extension_to_type(content_type));
     }
 
+    /* set custom header */
+    void set_custom_header(const sstring& header, const sstring& value) {
+	    _headers[header] = value;
+    }
+
     /**
      * \brief Write a string as the body
      *
