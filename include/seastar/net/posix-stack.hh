@@ -34,6 +34,12 @@ namespace net {
 
 using namespace seastar;
 
+struct posix_stack_options : public program_options::option_group {
+    /// \brief Create single-shard-sockets
+    program_options::value<> single_shard_sockets;
+    posix_stack_options();
+};
+
 // We can't keep this in any of the socket servers as instance members, because a connection can
 // outlive the socket server. To avoid having the whole socket_server tracked as a shared pointer,
 // we will have a conntrack structure.

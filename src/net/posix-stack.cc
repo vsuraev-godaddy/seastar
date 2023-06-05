@@ -862,10 +862,20 @@ posix_udp_channel::receive() {
     });
 }
 
+posix_stack_options::posix_stack_options() : 
+	program_options::option_group(nullptr, "Posix"),
+	single_shard_sockets(*this, "single-shard-sockets", "Single-shard sockets")
+{
+}
+
 network_stack_entry register_posix_stack() {
     return network_stack_entry{
-        "posix", std::make_unique<program_options::option_group>(nullptr, "Posix"),
+        "posix", std::make_unique<posix_stack_options>(),
         [](const program_options::option_group& ops) {
+	    auto net_opts = dynamic_cast<const net::posix_stack_options*>(&ops);
+	    if (net_opts->single_shard_sockets){
+		    return posix_network_stack::create(ops);
+	    }
             return smp::main_thread() ? posix_network_stack::create(ops)
                                       : posix_ap_network_stack::create(ops);
         },
