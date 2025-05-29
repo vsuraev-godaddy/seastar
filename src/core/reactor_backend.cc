@@ -22,6 +22,7 @@
 module;
 #endif
 
+#include <span> // fails otherwise on Alma9
 #include <atomic>
 #include <chrono>
 #include <filesystem>

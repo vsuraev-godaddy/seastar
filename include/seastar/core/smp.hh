@@ -40,6 +40,7 @@
 #include <ranges>
 #endif
 
+#include <span> // fails otherwise on Alma9
 /// \file
 
 namespace seastar {
