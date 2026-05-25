@@ -278,7 +278,7 @@ set (dpdk_args
   -Dmbuf_refcnt_atomic=false
   -Dmax_memseg_lists=8192
   -Ddisable_drivers=net/softnic,net/bonding,net/gve,net/ionic
-  -Ddisable_libs="jobstats,power,port,table,pipeline,member"
+  -Ddisable_libs=jobstats,power,port,table,pipeline,member
   -Dcpu_instruction_set=${Seastar_DPDK_MACHINE})
 
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
