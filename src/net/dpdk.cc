@@ -2321,10 +2321,15 @@ dpdk_options::dpdk_options(program_options::option_group* parent_group)
     , hw_fc(*this, "hw-fc",
                 "on",
                 "Enable HW Flow Control (on / off)")
+    , dpdk_extra_eal_args(*this, "dpdk-extra-eal-args",
+                "",
+                "Extra EAL arguments passed verbatim to rte_eal_init() (space-separated), "
+                "e.g. \"--no-pci --vdev=net_af_xdp0,iface=eth0,start_queue=0,queue_count=2\"")
 #else
     : program_options::option_group(parent_group, "DPDK net options", program_options::unused{})
     , dpdk_port_index(*this, "dpdk-port-index", program_options::unused{})
     , hw_fc(*this, "hw-fc", program_options::unused{})
+    , dpdk_extra_eal_args(*this, "dpdk-extra-eal-args", program_options::unused{})
 #endif
 #if 0
     opts.add_options()

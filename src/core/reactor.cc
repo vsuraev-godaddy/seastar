@@ -4559,7 +4559,18 @@ void smp::configure(const smp_options& smp_opts, const reactor_options& reactor_
         for (auto&& a : allocations) {
             cpus[a.cpu_id] = true;
         }
-        dpdk::eal::init(cpus, reactor_opts._argv0, hugepages_path, native_stack ? bool(native_stack->dpdk_pmd) : false);
+        std::vector<std::string> extra_eal_args;
+        if (native_stack && native_stack->dpdk_opts.dpdk_extra_eal_args) {
+            boost::algorithm::split(extra_eal_args,
+                                    native_stack->dpdk_opts.dpdk_extra_eal_args.get_value(),
+                                    boost::algorithm::is_space(),
+                                    boost::algorithm::token_compress_on);
+            extra_eal_args.erase(
+                std::remove_if(extra_eal_args.begin(), extra_eal_args.end(),
+                               [](const std::string& s) { return s.empty(); }),
+                extra_eal_args.end());
+        }
+        dpdk::eal::init(cpus, reactor_opts._argv0, hugepages_path, native_stack ? bool(native_stack->dpdk_pmd) : false, extra_eal_args);
     }
 #endif
 

@@ -30,7 +30,8 @@ namespace dpdk {
 
 bool eal::initialized = false;
 
-void eal::init(cpuset cpus, const std::string& argv0, const std::optional<std::string>& hugepages_path, bool dpdk_pmd)
+void eal::init(cpuset cpus, const std::string& argv0, const std::optional<std::string>& hugepages_path, bool dpdk_pmd,
+               const std::vector<std::string>& extra_eal_args)
 {
     if (initialized) {
         return;
@@ -72,6 +73,10 @@ void eal::init(cpuset cpus, const std::string& argv0, const std::optional<std::s
         args.push_back(string2vector(size_MB_str.str()));
     } else if (!dpdk_pmd) {
         args.push_back(string2vector("--no-huge"));
+    }
+
+    for (const auto& arg : extra_eal_args) {
+        args.push_back(string2vector(arg));
     }
 
     std::vector<char*> cargs;

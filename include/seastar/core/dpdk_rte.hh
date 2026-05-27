@@ -21,6 +21,8 @@
 
 #include <bitset>
 #include <optional>
+#include <string>
+#include <vector>
 #include <rte_config.h>
 #include <rte_ethdev.h>
 #include <rte_version.h>
@@ -46,7 +48,8 @@ class eal {
 public:
     using cpuset = std::bitset<RTE_MAX_LCORE>;
 
-    static void init(cpuset cpus, const std::string& argv0, const std::optional<std::string>& hugepages_path, bool dpdk_pmd);
+    static void init(cpuset cpus, const std::string& argv0, const std::optional<std::string>& hugepages_path, bool dpdk_pmd,
+                     const std::vector<std::string>& extra_eal_args = {});
     /**
      * Returns the amount of memory needed for DPDK
      * @param num_cpus Number of CPUs the application is going to use

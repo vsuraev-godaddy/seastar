@@ -41,6 +41,11 @@ struct dpdk_options : public program_options::option_group {
     ///
     /// Default: \p on.
     program_options::value<std::string> hw_fc;
+    /// \brief Extra EAL arguments passed verbatim to rte_eal_init().
+    ///
+    /// Space-separated list of EAL flags appended after Seastar's own
+    /// generated arguments, e.g. "--no-pci --vdev=net_af_xdp0,iface=eth0".
+    program_options::value<std::string> dpdk_extra_eal_args;
 
     /// \cond internal
     dpdk_options(program_options::option_group* parent_group);
