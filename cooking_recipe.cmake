@@ -268,9 +268,22 @@ cooking_ingredient (c-ares
     BUILD_COMMAND <DISABLE>
     INSTALL_COMMAND ${make_command} install)
 
+set (xdp_install_dir ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/install)
+set (dpdk_pkgconfig_dir ${CMAKE_CURRENT_BINARY_DIR}/dpdk_pkgconfig_generated)
+file (MAKE_DIRECTORY ${dpdk_pkgconfig_dir})
+file (WRITE ${dpdk_pkgconfig_dir}/libbpf.pc
+  "prefix=${xdp_install_dir}\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: libbpf\nDescription: BPF library\nVersion: 1.6.2\n"
+  "Libs: -L\${libdir} -lbpf -lelf -lz\nCflags: -I\${includedir}\n")
+file (WRITE ${dpdk_pkgconfig_dir}/libxdp.pc
+  "prefix=${xdp_install_dir}\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: libxdp\nDescription: XDP library\nVersion: 1.5.6\n"
+  "Libs: -L\${libdir} -lxdp -lbpf -lelf -lz\nCflags: -I\${includedir}\n")
+set (dpdk_pkg_config_path ${dpdk_pkgconfig_dir}:/usr/lib64/pkgconfig)
+
 set (dpdk_args
   --default-library=static
-  -Dc_args="-Wno-error"
+  "-Dc_args=-Wno-error -I${xdp_install_dir}/include"
   -Denable_docs=false
   -Denable_apps=dpdk-testpmd
   -Dtests=false
@@ -301,11 +314,11 @@ cooking_ingredient (dpdk
   EXTERNAL_PROJECT_ARGS
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dpdk
     CONFIGURE_COMMAND
-      env CC=${CMAKE_C_COMPILER} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
+      env CC=${CMAKE_C_COMPILER} PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
     BUILD_COMMAND
-      ${Ninja_EXECUTABLE} -C <BINARY_DIR>
+      env PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Ninja_EXECUTABLE} -C <BINARY_DIR>
     INSTALL_COMMAND
-      ${Ninja_EXECUTABLE} -C <BINARY_DIR> install)
+      env PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Ninja_EXECUTABLE} -C <BINARY_DIR> install)
 
 cooking_ingredient (fmt
   EXTERNAL_PROJECT_ARGS

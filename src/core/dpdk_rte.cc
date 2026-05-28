@@ -23,6 +23,7 @@
 #include <seastar/util/conversions.hh>
 #include <seastar/util/std-compat.hh>
 #include <rte_pci.h>
+#include <rte_bus_vdev.h>
 
 namespace seastar {
 
@@ -75,8 +76,30 @@ void eal::init(cpuset cpus, const std::string& argv0, const std::optional<std::s
         args.push_back(string2vector("--no-huge"));
     }
 
-    for (const auto& arg : extra_eal_args) {
-        args.push_back(string2vector(arg));
+    // In DPDK 23.x static builds, rte_devargs_parse() fails to match the vdev bus
+    // for --vdev=<name>,<args> format because bus_name_cmp() does prefix matching.
+    // Work around this by filtering --vdev args here and calling rte_vdev_init()
+    // explicitly after EAL init, which bypasses rte_devargs_parse() entirely.
+    std::vector<std::pair<std::string, std::string>> vdev_devices;
+    for (size_t i = 0; i < extra_eal_args.size(); ++i) {
+        const auto& arg = extra_eal_args[i];
+        if (arg.rfind("--vdev=", 0) == 0) {
+            std::string devstr = arg.substr(7);
+            auto comma = devstr.find(',');
+            vdev_devices.push_back({
+                devstr.substr(0, comma),
+                comma != std::string::npos ? devstr.substr(comma + 1) : ""
+            });
+        } else if (arg == "--vdev" && i + 1 < extra_eal_args.size()) {
+            const auto& devstr = extra_eal_args[++i];
+            auto comma = devstr.find(',');
+            vdev_devices.push_back({
+                devstr.substr(0, comma),
+                comma != std::string::npos ? devstr.substr(comma + 1) : ""
+            });
+        } else {
+            args.push_back(string2vector(arg));
+        }
     }
 
     std::vector<char*> cargs;
@@ -88,6 +111,12 @@ void eal::init(cpuset cpus, const std::string& argv0, const std::optional<std::s
     int ret = rte_eal_init(cargs.size(), cargs.data());
     if (ret < 0) {
         rte_exit(EXIT_FAILURE, "Cannot init EAL\n");
+    }
+
+    for (const auto& [name, vdev_args] : vdev_devices) {
+        if (rte_vdev_init(name.c_str(), vdev_args.empty() ? nullptr : vdev_args.c_str()) != 0) {
+            rte_exit(EXIT_FAILURE, "Cannot init vdev %s\n", name.c_str());
+        }
     }
 
     initialized = true;
