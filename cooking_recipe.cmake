@@ -294,10 +294,10 @@ set (dpdk_pkgconfig_dir ${CMAKE_CURRENT_BINARY_DIR}/dpdk_pkgconfig_generated)
 file (MAKE_DIRECTORY ${dpdk_pkgconfig_dir})
 file (WRITE ${dpdk_pkgconfig_dir}/libbpf.pc
   "Name: libbpf\nDescription: BPF library\nVersion: 1.6.2\n"
-  "Libs: -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${bpf_incdir}\n")
+  "Libs: ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${bpf_incdir}\n")
 file (WRITE ${dpdk_pkgconfig_dir}/libxdp.pc
   "Name: libxdp\nDescription: XDP library\nVersion: 1.5.6\n"
-  "Libs: -L${xdp_libdir} -lxdp -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${xdp_incdir}\n")
+  "Libs: ${xdp_libdir}/libxdp.a ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${xdp_incdir}\n")
 set (dpdk_pkg_config_path ${dpdk_pkgconfig_dir}:/usr/lib64/pkgconfig)
 
 set (dpdk_args
