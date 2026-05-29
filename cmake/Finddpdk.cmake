@@ -95,6 +95,7 @@ set (CMAKE_FIND_LIBRARY_SUFFIXES
 foreach (lib ${rte_libs})
   string(TOUPPER ${lib} upper_lib)
   set(library_name "dpdk_${upper_lib}_LIBRARY")
+  unset(${library_name} CACHE)
   find_library (${library_name}
     NAME rte_${lib}
     HINTS
