@@ -155,7 +155,10 @@ foreach (_xdp_dep xdp bpf)
     NAMES lib${_xdp_dep}.a
     HINTS
       ${dpdk_PC_STATIC_LIBRARY_DIRS}
-      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/install/lib)
+      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/install/lib
+      # Fallback: build dirs when install step didn't run
+      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/xdp-tools/lib/libxdp
+      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/libbpf/src)
   if (_xdp_dep_${_xdp_dep}_LIBRARY)
     list (APPEND dpdk_dependencies ${_xdp_dep_${_xdp_dep}_LIBRARY})
   endif ()
