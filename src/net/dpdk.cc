@@ -312,7 +312,7 @@ private:
     struct rte_eth_xstat_name *_xstat_names = nullptr;
     int _offsets[BOOST_PP_SEQ_SIZE(XSTATS_ID_LIST)];
 
-    static const sstring id_to_str(const xstat_id id) {
+    static const seastar::sstring id_to_str(const xstat_id id) {
 #define ENUM_TO_STR(r, data, elem) \
         if (id == elem) \
             return BOOST_PP_STRINGIZE(elem);
@@ -346,7 +346,7 @@ private:
 class dpdk_device : public device {
     uint16_t _port_idx;
     uint16_t _num_queues;
-    net::hw_features _hw_features;
+    seastar::net::hw_features _hw_features;
     uint16_t _queues_ready = 0;
     unsigned _home_cpu;
     bool _use_lro;
@@ -354,7 +354,7 @@ class dpdk_device : public device {
     std::vector<uint8_t> _redir_table;
     rss_key_type _rss_key;
     port_stats _stats;
-    timer<> _stats_collector;
+    seastar::timer<> _stats_collector;
     const std::string _stats_plugin_name;
     const std::string _stats_plugin_inst;
     seastar::metrics::metric_groups _metrics;
@@ -364,7 +364,7 @@ class dpdk_device : public device {
 
 public:
     rte_eth_dev_info _dev_info = {};
-    promise<> _link_ready_promise;
+    seastar::promise<> _link_ready_promise;
 
 private:
     /**
@@ -411,7 +411,7 @@ public:
                 bool enable_fc)
         : _port_idx(port_idx)
         , _num_queues(num_queues)
-        , _home_cpu(this_shard_id())
+        , _home_cpu(seastar::this_shard_id())
         , _use_lro(use_lro)
         , _enable_fc(enable_fc)
         , _stats_plugin_name("network")
@@ -487,11 +487,11 @@ public:
 
         return mac.addr_bytes;
     }
-    net::hw_features hw_features() override {
+    seastar::net::hw_features hw_features() override {
         return _hw_features;
     }
 
-    net::hw_features& hw_features_ref() { return _hw_features; }
+    seastar::net::hw_features& hw_features_ref() { return _hw_features; }
 
     const rte_eth_rxconf* def_rx_conf() const {
         return &_dev_info.default_rxconf;
@@ -507,7 +507,7 @@ public:
     void set_rss_table();
 
     virtual uint16_t hw_queues_count() override { return _num_queues; }
-    virtual future<> link_ready() override { return _link_ready_promise.get_future(); }
+    virtual seastar::future<> link_ready() override { return _link_ready_promise.get_future(); }
     virtual std::unique_ptr<qp> init_local_queue(const program_options::option_group& opts, uint16_t qid) override;
     virtual unsigned hash2qid(uint32_t hash) override {
         SEASTAR_ASSERT(_redir_table.size());
@@ -525,7 +525,7 @@ public:
 };
 
 template <bool HugetlbfsMemBackend>
-class dpdk_qp : public net::qp {
+class dpdk_qp : public seastar::net::qp {
     class tx_buf_factory;
 
     class tx_buf {
@@ -842,7 +842,7 @@ build_mbuf_cluster:
         }
 
         /**
-         * Zero-copy handling of a single net::fragment.
+         * Zero-copy handling of a single seastar::net::fragment.
          *
          * @param do_one_buf Functor responsible for a single rte_mbuf
          *                   handling
@@ -903,7 +903,7 @@ build_mbuf_cluster:
         }
 
         /**
-         * Zero-copy handling of a single net::fragment.
+         * Zero-copy handling of a single seastar::net::fragment.
          *
          * @param qp dpdk_qp handle (in)
          * @param frag Fragment to copy (in)
@@ -921,7 +921,7 @@ build_mbuf_cluster:
         }
 
         /**
-         * Copies one net::fragment into the cluster of rte_mbuf's.
+         * Copies one seastar::net::fragment into the cluster of rte_mbuf's.
          *
          * @param qp dpdk_qp handle (in)
          * @param frag Fragment to copy (in)
@@ -1103,7 +1103,7 @@ build_mbuf_cluster:
         tx_buf_factory(uint16_t qid) {
             using namespace memory;
 
-            sstring name = sstring(pktmbuf_pool_name) + to_sstring(qid) + "_tx";
+            seastar::sstring name = seastar::sstring(pktmbuf_pool_name) + to_sstring(qid) + "_tx";
             printf("Creating Tx mbuf pool '%s' [%u mbufs] ...\n",
                    name.c_str(), mbufs_per_queue_tx);
 
@@ -1255,7 +1255,7 @@ public:
                      const std::string stats_plugin_name);
 
     virtual void rx_start() override;
-    virtual future<> send(packet p) override {
+    virtual seastar::future<> send(packet p) override {
         abort();
     }
     virtual ~dpdk_qp() {}
@@ -1392,7 +1392,7 @@ private:
     bool poll_rx_once();
 
     /**
-     * Translates an rte_mbuf's into net::packet and feeds them to _rx_stream.
+     * Translates an rte_mbuf's into seastar::net::packet and feeds them to _rx_stream.
      *
      * @param bufs An array of received rte_mbuf's
      * @param count Number of buffers in the bufs[]
@@ -1447,8 +1447,8 @@ int dpdk_device::init_port_start()
     // DPDK i40e driver. This and all related to _is_i40e_device code should be
     // removed once this handling is added.
     //
-    if (sstring("rte_i40evf_pmd") == _dev_info.driver_name ||
-        sstring("rte_i40e_pmd") == _dev_info.driver_name) {
+    if (seastar::sstring("rte_i40evf_pmd") == _dev_info.driver_name ||
+        seastar::sstring("rte_i40e_pmd") == _dev_info.driver_name) {
         printf("Device is an Intel's 40G NIC. Enabling 8 fragments hack!\n");
         _is_i40e_device = true;
     }
@@ -1465,13 +1465,13 @@ int dpdk_device::init_port_start()
     // i40e PF NICs support up to 64 RSS queues.
     // i40e VF NICs support up to 16 RSS queues.
     //
-    if (sstring("rte_ixgbe_pmd") == _dev_info.driver_name) {
+    if (seastar::sstring("rte_ixgbe_pmd") == _dev_info.driver_name) {
         _dev_info.max_rx_queues = std::min(_dev_info.max_rx_queues, (uint16_t)16);
-    } else if (sstring("rte_ixgbevf_pmd") == _dev_info.driver_name) {
+    } else if (seastar::sstring("rte_ixgbevf_pmd") == _dev_info.driver_name) {
         _dev_info.max_rx_queues = std::min(_dev_info.max_rx_queues, (uint16_t)4);
-    } else if (sstring("rte_i40e_pmd") == _dev_info.driver_name) {
+    } else if (seastar::sstring("rte_i40e_pmd") == _dev_info.driver_name) {
         _dev_info.max_rx_queues = std::min(_dev_info.max_rx_queues, (uint16_t)64);
-    } else if (sstring("rte_i40evf_pmd") == _dev_info.driver_name) {
+    } else if (seastar::sstring("rte_i40evf_pmd") == _dev_info.driver_name) {
         _dev_info.max_rx_queues = std::min(_dev_info.max_rx_queues, (uint16_t)16);
     }
 
@@ -1554,6 +1554,15 @@ int dpdk_device::init_port_start()
                    _port_idx, _dev_info.reta_size);
         } else {
             _rss_table_bits = std::lround(std::log2(_dev_info.max_rx_queues));
+            // No hardware RETA: build a software indirection table so that
+            // hash2qid() never asserts on an empty _redir_table.
+            // Size must be a power-of-2 for the bitmask in hash2qid().
+            unsigned bits = 0;
+            while ((1u << bits) < _num_queues) bits++;
+            _redir_table.resize(1u << bits);
+            for (size_t i = 0; i < _redir_table.size(); i++) {
+                _redir_table[i] = static_cast<uint8_t>(i % _num_queues);
+            }
         }
     } else {
         _redir_table.push_back(0);
@@ -1771,7 +1780,7 @@ template <bool HugetlbfsMemBackend>
 bool dpdk_qp<HugetlbfsMemBackend>::init_rx_mbuf_pool()
 {
     using namespace memory;
-    sstring name = sstring(pktmbuf_pool_name) + to_sstring(_qid) + "_rx";
+    seastar::sstring name = seastar::sstring(pktmbuf_pool_name) + to_sstring(_qid) + "_rx";
 
     printf("Creating Rx mbuf pool '%s' [%u mbufs] ...\n",
            name.c_str(), mbufs_per_queue_rx);
@@ -1883,7 +1892,7 @@ void dpdk_device::check_port_link_status()
     constexpr auto check_interval = 100ms;
 
     std::cout << "\nChecking link status " << std::endl;
-    auto t = new timer<>;
+    auto t = new seastar::timer<>;
     t->set_callback([this, count, t] () mutable {
         const int max_check_time = 90;  /* 9s (90 * 100ms) in total */
         struct rte_eth_link link;
@@ -2240,7 +2249,7 @@ void dpdk_device::set_rss_table()
 }
 
 std::unique_ptr<qp> dpdk_device::init_local_queue(const program_options::option_group& opts, uint16_t qid) {
-    auto net_opts = dynamic_cast<const net::native_stack_options*>(&opts);
+    auto net_opts = dynamic_cast<const seastar::net::native_stack_options*>(&opts);
     SEASTAR_ASSERT(net_opts);
 
     std::unique_ptr<qp> qp;
@@ -2264,7 +2273,7 @@ std::unique_ptr<qp> dpdk_device::init_local_queue(const program_options::option_
 
 /******************************** Interface functions *************************/
 
-std::unique_ptr<net::device> create_dpdk_net_device(
+std::unique_ptr<seastar::net::device> create_dpdk_net_device(
                                     uint16_t port_idx,
                                     uint16_t num_queues,
                                     bool use_lro,
@@ -2288,7 +2297,7 @@ std::unique_ptr<net::device> create_dpdk_net_device(
                                                enable_fc);
 }
 
-std::unique_ptr<net::device> create_dpdk_net_device(
+std::unique_ptr<seastar::net::device> create_dpdk_net_device(
                                     const hw_config& hw_cfg)
 {
     return create_dpdk_net_device(*hw_cfg.port_index, smp::count, hw_cfg.lro, hw_cfg.hw_fc);
