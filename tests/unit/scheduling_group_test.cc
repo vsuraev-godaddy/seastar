@@ -40,7 +40,6 @@
 
 using namespace std::chrono_literals;
 
-using namespace seastar;
 
 /**
  *  Test setting primitive and object as a value after all groups are created
@@ -53,7 +52,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_after_sg_create) {
         sgs.push_back(create_scheduling_group(format("sg{}", i).c_str(), 100).get());
     }
 
-    const auto destroy_scheduling_groups = defer([&sgs] () noexcept {
+    const auto destroy_scheduling_groups = seastar::defer([&sgs] () noexcept {
        for (scheduling_group sg : sgs) {
            destroy_scheduling_group(sg).get();
        }
@@ -65,7 +64,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_after_sg_create) {
     scheduling_group_key key2 = scheduling_group_key_create(key2_conf).get();
 
     smp::invoke_on_all([key1, key2, &sgs] () {
-        int factor = this_shard_id() + 1;
+        int factor = seastar::this_shard_id() + 1;
         for (int i=0; i < num_scheduling_groups; i++) {
             sgs[i].get_specific<int>(key1) = (i + 1) * factor;
             sgs[i].get_specific<ivec>(key2).push_back((i + 1) * factor);
@@ -80,7 +79,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_after_sg_create) {
 
     smp::invoke_on_all([key1, key2] () {
         return reduce_scheduling_group_specific<int>(std::plus<int>(), int(0), key1).then([] (int sum) {
-            int factor = this_shard_id() + 1;
+            int factor = seastar::this_shard_id() + 1;
             int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
             BOOST_REQUIRE_EQUAL(expected_sum, sum);
         }). then([key2] {
@@ -89,7 +88,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_after_sg_create) {
             };
 
             return map_reduce_scheduling_group_specific<ivec>(ivec_to_int, std::plus<int>(), int(0), key2).then([] (int sum) {
-                int factor = this_shard_id() + 1;
+                int factor = seastar::this_shard_id() + 1;
                 int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
                 BOOST_REQUIRE_EQUAL(expected_sum, sum);
             });
@@ -107,7 +106,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_sg_create) {
     using ivec  = std::vector<int>;
     const int num_scheduling_groups = 4;
     std::vector<scheduling_group> sgs;
-    const auto destroy_scheduling_groups = defer([&sgs] () noexcept {
+    const auto destroy_scheduling_groups = seastar::defer([&sgs] () noexcept {
        for (scheduling_group sg : sgs) {
            destroy_scheduling_group(sg).get();
        }
@@ -123,7 +122,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_sg_create) {
     }
 
     smp::invoke_on_all([key1, key2, &sgs] () {
-        int factor = this_shard_id() + 1;
+        int factor = seastar::this_shard_id() + 1;
         for (int i=0; i < num_scheduling_groups; i++) {
             sgs[i].get_specific<int>(key1) = (i + 1) * factor;
             sgs[i].get_specific<ivec>(key2).push_back((i + 1) * factor);
@@ -138,7 +137,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_sg_create) {
 
     smp::invoke_on_all([key1, key2] () {
         return reduce_scheduling_group_specific<int>(std::plus<int>(), int(0), key1).then([] (int sum) {
-            int factor = this_shard_id() + 1;
+            int factor = seastar::this_shard_id() + 1;
             int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
             BOOST_REQUIRE_EQUAL(expected_sum, sum);
         }). then([key2] {
@@ -147,7 +146,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_sg_create) {
             };
 
             return map_reduce_scheduling_group_specific<ivec>(ivec_to_int, std::plus<int>(), int(0), key2).then([] (int sum) {
-                int factor = this_shard_id() + 1;
+                int factor = seastar::this_shard_id() + 1;
                 int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
                 BOOST_REQUIRE_EQUAL(expected_sum, sum);
             });
@@ -165,7 +164,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_and_after_sg_create) {
     using ivec  = std::vector<int>;
     const int num_scheduling_groups = 4;
     std::vector<scheduling_group> sgs;
-    const auto destroy_scheduling_groups = defer([&sgs] () noexcept {
+    const auto destroy_scheduling_groups = seastar::defer([&sgs] () noexcept {
        for (scheduling_group sg : sgs) {
            destroy_scheduling_group(sg).get();
        }
@@ -185,7 +184,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_and_after_sg_create) {
     }
 
     smp::invoke_on_all([key1, key2, &sgs] () {
-        int factor = this_shard_id() + 1;
+        int factor = seastar::this_shard_id() + 1;
         for (int i=0; i < num_scheduling_groups; i++) {
             sgs[i].get_specific<int>(key1) = (i + 1) * factor;
             sgs[i].get_specific<ivec>(key2).push_back((i + 1) * factor);
@@ -200,7 +199,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_and_after_sg_create) {
 
     smp::invoke_on_all([key1, key2] () {
         return reduce_scheduling_group_specific<int>(std::plus<int>(), int(0), key1).then([] (int sum) {
-            int factor = this_shard_id() + 1;
+            int factor = seastar::this_shard_id() + 1;
             int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
             BOOST_REQUIRE_EQUAL(expected_sum, sum);
         }). then([key2] {
@@ -209,7 +208,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_and_after_sg_create) {
             };
 
             return map_reduce_scheduling_group_specific<ivec>(ivec_to_int, std::plus<int>(), int(0), key2).then([] (int sum) {
-                int factor = this_shard_id() + 1;
+                int factor = seastar::this_shard_id() + 1;
                 int expected_sum = ((1 + num_scheduling_groups)*num_scheduling_groups) * factor /2;
                 BOOST_REQUIRE_EQUAL(expected_sum, sum);
             });
@@ -223,7 +222,7 @@ SEASTAR_THREAD_TEST_CASE(sg_specific_values_define_before_and_after_sg_create) {
  */
 SEASTAR_THREAD_TEST_CASE(sg_scheduling_group_inheritance_in_seastar_async_test) {
     scheduling_group sg = create_scheduling_group("sg0", 100).get();
-    auto cleanup = defer([&] () noexcept { destroy_scheduling_group(sg).get(); });
+    auto cleanup = seastar::defer([&] () noexcept { destroy_scheduling_group(sg).get(); });
     thread_attributes attr = {};
     attr.sched_group = sg;
     seastar::async(attr, [attr] {
@@ -244,7 +243,7 @@ SEASTAR_THREAD_TEST_CASE(sg_scheduling_group_inheritance_in_seastar_async_test) 
 
 SEASTAR_THREAD_TEST_CASE(yield_preserves_sg) {
     scheduling_group sg = create_scheduling_group("sg", 100).get();
-    auto cleanup = defer([&] () noexcept { destroy_scheduling_group(sg).get(); });
+    auto cleanup = seastar::defer([&] () noexcept { destroy_scheduling_group(sg).get(); });
     with_scheduling_group(sg, [&] {
         return yield().then([&] {
             BOOST_REQUIRE_EQUAL(
@@ -312,7 +311,7 @@ SEASTAR_THREAD_TEST_CASE(sg_rename_callback) {
     }
 
     std::vector<scheduling_group> sgs;
-    const auto destroy_sgs = defer([&sgs] () noexcept {
+    const auto destroy_sgs = seastar::defer([&sgs] () noexcept {
         for (auto sg : sgs) {
            destroy_scheduling_group(sg).get();
         }

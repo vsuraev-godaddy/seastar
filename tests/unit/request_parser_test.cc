@@ -30,14 +30,13 @@
 #include <utility>
 #include <vector>
 
-using namespace seastar;
 
 SEASTAR_TEST_CASE(test_header_parsing) {
     struct test_set {
-        sstring msg;
+        seastar::sstring msg;
         bool parsable;
-        sstring header_name = "";
-        sstring header_value = "";
+        seastar::sstring header_name = "";
+        seastar::sstring header_value = "";
 
         temporary_buffer<char> buf() {
             return temporary_buffer<char>(msg.c_str(), msg.size());
@@ -70,5 +69,5 @@ SEASTAR_TEST_CASE(test_header_parsing) {
             BOOST_REQUIRE_EQUAL(req->get_header(std::move(tset.header_name)), std::move(tset.header_value));
         }
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }

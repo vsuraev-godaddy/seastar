@@ -26,7 +26,6 @@
 
 #include <seastar/util/std-compat.hh>
 
-using namespace seastar;
 
 static void test_source_location_callee(const char* ref_file, const char* ref_func, int ref_line, compat::source_location loc = compat::source_location::current()) {
     BOOST_REQUIRE_EQUAL(loc.file_name(), ref_file);

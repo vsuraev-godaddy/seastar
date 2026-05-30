@@ -26,7 +26,6 @@
 #include <seastar/core/posix.hh>
 #include <seastar/util/backtrace.hh>
 
-using namespace seastar;
 
 void foo() {
     throw std::runtime_error("foo");

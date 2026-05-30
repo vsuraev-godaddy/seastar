@@ -29,7 +29,6 @@
 #include <seastar/json/json_elements.hh>
 #include <seastar/testing/thread_test_case.hh>
 
-using namespace seastar;
 using namespace json;
 
 SEASTAR_TEST_CASE(test_simple_values) {
@@ -40,13 +39,13 @@ SEASTAR_TEST_CASE(test_simple_values) {
     BOOST_CHECK_EQUAL("false", formatter::to_json(false));
 
     BOOST_CHECK_EQUAL("\"apa\"", formatter::to_json("apa")); // to_json(const char*)
-    BOOST_CHECK_EQUAL("\"apa\"", formatter::to_json(sstring("apa"))); // to_json(const sstring&)
+    BOOST_CHECK_EQUAL("\"apa\"", formatter::to_json(seastar::sstring("apa"))); // to_json(const seastar::sstring&)
     BOOST_CHECK_EQUAL("\"apa\"", formatter::to_json("apa", 3)); // to_json(const char*, size_t)
 
     using namespace std::string_literals;
-    sstring str = "\0 COWA\bU\nGA [{\r}]\x1a"s,
+    seastar::sstring str = "\0 COWA\bU\nGA [{\r}]\x1a"s,
             expected = "\"\\u0000 COWA\\bU\\nGA [{\\r}]\\u001A\""s;
-    BOOST_CHECK_EQUAL(expected, formatter::to_json(str)); // to_json(const sstring&)
+    BOOST_CHECK_EQUAL(expected, formatter::to_json(str)); // to_json(const seastar::sstring&)
     BOOST_CHECK_EQUAL(expected, formatter::to_json(str.c_str(), str.size())); // to_json(const char*, size_t)
 
     return make_ready_future();
@@ -71,7 +70,7 @@ SEASTAR_TEST_CASE(test_ranges) {
 }
 
 struct object_json : public json_base {
-    json_element<sstring> subject;
+    json_element<seastar::sstring> subject;
     json_list<long> values;
 
     void register_params() {
@@ -100,8 +99,8 @@ SEASTAR_TEST_CASE(test_jsonable) {
 }
 
 template<typename F>
-void formatter_check_expected(sstring expected, F f, bool close = true) {
-    auto vec = std::vector<net::packet>{};
+void formatter_check_expected(seastar::sstring expected, F f, bool close = true) {
+    auto vec = std::vector<seastar::net::packet>{};
     auto out = output_stream<char>(data_sink(std::make_unique<vector_data_sink>(vec)), 8);
 
     f(out);
@@ -109,20 +108,20 @@ void formatter_check_expected(sstring expected, F f, bool close = true) {
         out.close().get();
     }
 
-    auto packets = net::packet{};
+    auto packets = seastar::net::packet{};
     for (auto &p : vec) {
       packets.append(std::move(p));
     }
     packets.linearize();
     auto buf = packets.release();
 
-    sstring result(buf.front().get(), buf.front().size());
+    seastar::sstring result(buf.front().get(), buf.front().size());
     BOOST_CHECK_EQUAL(expected, result);
 }
 
 
 SEASTAR_THREAD_TEST_CASE(test_stream_range_as_array) {
-    sstring expected = R"([{"subject":"1","values":[1]}, {"subject":"2","values":[2]}, {"subject":"3","values":[3]}])";
+    seastar::sstring expected = R"([{"subject":"1","values":[1]}, {"subject":"2","values":[2]}, {"subject":"3","values":[3]}])";
     formatter_check_expected(expected, [] (auto& out) {
         auto mapper = stream_range_as_array(std::vector<int>{1,2,3}, [] (auto i) {
             object_json obj;

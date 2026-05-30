@@ -24,7 +24,6 @@
 #include <seastar/core/do_with.hh>
 #include <seastar/testing/test_case.hh>
 
-using namespace seastar;
 
 extern "C" {
 #include <signal.h>
@@ -33,7 +32,7 @@ extern "C" {
 }
 
 SEASTAR_TEST_CASE(test_sighup) {
-    return do_with(make_lw_shared<promise<>>(), false, [](auto const& p, bool& signaled) {
+    return seastar::do_with(seastar::make_lw_shared<seastar::promise<>>(), false, [](auto const& p, bool& signaled) {
         seastar::handle_signal(SIGHUP, [p, &signaled] {
             signaled = true;
             p->set_value();

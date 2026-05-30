@@ -59,12 +59,11 @@
 
 #include "expected_exception.hh"
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
-static_assert(std::is_nothrow_default_constructible_v<gate>,
+static_assert(std::is_nothrow_default_constructible_v<seastar::gate>,
     "seastar::gate constructor must not throw");
-static_assert(std::is_nothrow_move_constructible_v<gate>,
+static_assert(std::is_nothrow_move_constructible_v<seastar::gate>,
     "seastar::gate move constructor must not throw");
 
 static_assert(std::is_nothrow_default_constructible_v<shared_future<>>);
@@ -87,29 +86,29 @@ SEASTAR_TEST_CASE(test_self_move) {
     std::swap(s2, s2);
     BOOST_REQUIRE_EQUAL(*std::move(s2).get(), 42);
 
-    promise<std::unique_ptr<int>> p1;
+    seastar::promise<std::unique_ptr<int>> p1;
     p1.set_value(std::make_unique<int>(42));
     p1 = std::move(p1); // no crash, but the value of p1 is not defined.
 
-    promise<std::unique_ptr<int>> p2;
+    seastar::promise<std::unique_ptr<int>> p2;
     p2.set_value(std::make_unique<int>(42));
     std::swap(p2, p2);
     BOOST_REQUIRE_EQUAL(*p2.get_future().get(), 42);
 
-    auto  f1 = make_ready_future<std::unique_ptr<int>>(std::make_unique<int>(42));
+    auto  f1 = seastar::make_ready_future<std::unique_ptr<int>>(std::make_unique<int>(42));
     f1 = std::move(f1); // no crash, but the value of f1 is not defined.
 
-    auto f2 = make_ready_future<std::unique_ptr<int>>(std::make_unique<int>(42));
+    auto f2 = seastar::make_ready_future<std::unique_ptr<int>>(std::make_unique<int>(42));
     std::swap(f2, f2);
     BOOST_REQUIRE_EQUAL(*f2.get(), 42);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 #if defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 13)
 #pragma GCC diagnostic pop
 #endif
 
-static subscription<int> get_empty_subscription(std::function<future<> (int)> func) {
+static subscription<int> get_empty_subscription(std::function<seastar::future<> (int)> func) {
     stream<int> s;
     auto ret = s.listen(func);
     s.close();
@@ -136,19 +135,19 @@ SEASTAR_TEST_CASE(test_future_value_constructible_from_range) {
 
 SEASTAR_TEST_CASE(test_stream) {
     auto sub = get_empty_subscription([](int x) {
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
     return sub.done();
 }
 
 SEASTAR_TEST_CASE(test_stream_drop_sub) {
-    auto s = make_lw_shared<stream<int>>();
+    auto s = seastar::make_lw_shared<stream<int>>();
     const int expected = 42;
-    std::optional<future<>> ret;
+    std::optional<seastar::future<>> ret;
     {
         auto sub = s->listen([expected](int actual) {
             BOOST_REQUIRE_EQUAL(expected, actual);
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
         ret = sub.done();
         // It is ok to drop the subscription when we only want the competition future.
@@ -161,22 +160,22 @@ SEASTAR_TEST_CASE(test_stream_drop_sub) {
 
 SEASTAR_TEST_CASE(test_reference) {
     int a = 42;
-    future<int&> orig = make_ready_future<int&>(a);
-    future<int&> fut = std::move(orig);
+    seastar::future<int&> orig = seastar::make_ready_future<int&>(a);
+    seastar::future<int&> fut = std::move(orig);
     int& r = fut.get();
     r = 43;
     BOOST_REQUIRE_EQUAL(a, 43);
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_set_future_state_with_tuple) {
     future_state<std::tuple<int>> s1;
-    promise<int> p1;
+    seastar::promise<int> p1;
     const std::tuple<int> v1(42);
     s1.set(v1);
     p1.set_value(v1);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_THREAD_TEST_CASE(test_set_value_make_exception_in_copy) {
@@ -188,7 +187,7 @@ SEASTAR_THREAD_TEST_CASE(test_set_value_make_exception_in_copy) {
             throw 42;
         }
     };
-    promise<throw_in_copy> p1;
+    seastar::promise<throw_in_copy> p1;
     throw_in_copy v;
     p1.set_value(v);
     BOOST_REQUIRE_THROW(p1.get_future().get(), int);
@@ -200,7 +199,7 @@ SEASTAR_THREAD_TEST_CASE(test_set_exception_in_constructor) {
             throw 42;
         }
     };
-    future<throw_in_constructor> f = make_ready_future<throw_in_constructor>();
+    seastar::future<throw_in_constructor> f = seastar::make_ready_future<throw_in_constructor>();
     BOOST_REQUIRE(f.failed());
     BOOST_REQUIRE_THROW(f.get(), int);
 }
@@ -229,7 +228,7 @@ SEASTAR_TEST_CASE(test_finally_is_called_on_success_and_failure) {
 }
 
 SEASTAR_TEST_CASE(test_get_on_promise) {
-    auto p = promise<uint32_t>();
+    auto p = seastar::promise<uint32_t>();
     p.set_value(10);
     BOOST_REQUIRE_EQUAL(10u, p.get_future().get());
     return make_ready_future();
@@ -237,16 +236,16 @@ SEASTAR_TEST_CASE(test_get_on_promise) {
 
 // An exception class with a controlled what() overload
 class test_exception : public std::exception {
-    sstring _what;
+    seastar::sstring _what;
 public:
-    explicit test_exception(sstring what) : _what(std::move(what)) {}
+    explicit test_exception(seastar::sstring what) : _what(std::move(what)) {}
     virtual const char* what() const noexcept override {
         return _what.c_str();
     }
 };
 
 SEASTAR_TEST_CASE(test_get_on_exceptional_promise) {
-    auto p = promise<>();
+    auto p = seastar::promise<>();
     p.set_exception(test_exception("test"));
     BOOST_REQUIRE_THROW(p.get_future().get(), test_exception);
     return make_ready_future();
@@ -273,7 +272,7 @@ static void check_finally_exception(std::exception_ptr ex) {
 }
 
 SEASTAR_TEST_CASE(test_finally_exception) {
-    return make_ready_future<>().then([] {
+    return seastar::make_ready_future<>().then([] {
         throw test_exception("foo");
     }).finally([] {
         throw test_exception("bar");
@@ -281,7 +280,7 @@ SEASTAR_TEST_CASE(test_finally_exception) {
 }
 
 SEASTAR_TEST_CASE(test_finally_exceptional_future) {
-    return make_ready_future<>().then([] {
+    return seastar::make_ready_future<>().then([] {
         throw test_exception("foo");
     }).finally([] {
        return make_exception_future<>(test_exception("bar"));
@@ -290,7 +289,7 @@ SEASTAR_TEST_CASE(test_finally_exceptional_future) {
 
 SEASTAR_TEST_CASE(test_finally_waits_for_inner) {
     auto finally = make_shared<bool>();
-    auto p = make_shared<promise<>>();
+    auto p = make_shared<seastar::promise<>>();
 
     auto f = make_ready_future().then([] {
     }).finally([=] {
@@ -309,7 +308,7 @@ SEASTAR_TEST_CASE(test_finally_is_called_on_success_and_failure__not_ready_to_ar
     auto finally1 = make_shared<bool>();
     auto finally2 = make_shared<bool>();
 
-    promise<> p;
+    seastar::promise<> p;
     auto f = p.get_future().finally([=] {
         *finally1 = true;
     }).then([] {
@@ -329,7 +328,7 @@ SEASTAR_TEST_CASE(test_finally_is_called_on_success_and_failure__not_ready_to_ar
 }
 
 SEASTAR_TEST_CASE(test_exception_from_finally_fails_the_target) {
-    promise<> pr;
+    seastar::promise<> pr;
     auto f = pr.get_future().finally([=] {
         throw std::runtime_error("");
     }).then([] {
@@ -368,7 +367,7 @@ SEASTAR_TEST_CASE(test_exception_thrown_from_then_wrapped_causes_future_to_fail)
 }
 
 SEASTAR_TEST_CASE(test_exception_thrown_from_then_wrapped_causes_future_to_fail__async_case) {
-    promise<> p;
+    seastar::promise<> p;
 
     auto f = p.get_future().then_wrapped([] (auto&& f) {
         throw std::runtime_error("");
@@ -385,8 +384,8 @@ SEASTAR_TEST_CASE(test_exception_thrown_from_then_wrapped_causes_future_to_fail_
 }
 
 SEASTAR_TEST_CASE(test_failing_intermediate_promise_should_fail_the_master_future) {
-    promise<> p1;
-    promise<> p2;
+    seastar::promise<> p1;
+    seastar::promise<> p2;
 
     auto f = p1.get_future().then([f = p2.get_future()] () mutable {
         return std::move(f);
@@ -406,8 +405,8 @@ SEASTAR_TEST_CASE(test_failing_intermediate_promise_should_fail_the_master_futur
 }
 
 SEASTAR_TEST_CASE(test_future_forwarding__not_ready_to_unarmed) {
-    promise<> p1;
-    promise<> p2;
+    seastar::promise<> p1;
+    seastar::promise<> p2;
 
     auto f1 = p1.get_future();
     auto f2 = p2.get_future();
@@ -423,8 +422,8 @@ SEASTAR_TEST_CASE(test_future_forwarding__not_ready_to_unarmed) {
 }
 
 SEASTAR_TEST_CASE(test_future_forwarding__not_ready_to_armed) {
-    promise<> p1;
-    promise<> p2;
+    seastar::promise<> p1;
+    seastar::promise<> p2;
 
     auto f1 = p1.get_future();
     auto f2 = p2.get_future();
@@ -441,23 +440,23 @@ SEASTAR_TEST_CASE(test_future_forwarding__not_ready_to_armed) {
 }
 
 SEASTAR_TEST_CASE(test_future_forwarding__ready_to_unarmed) {
-    promise<> p2;
+    seastar::promise<> p2;
 
-    auto f1 = make_ready_future<>();
+    auto f1 = seastar::make_ready_future<>();
     auto f2 = p2.get_future();
 
     std::move(f1).forward_to(std::move(p2));
     BOOST_REQUIRE(f2.available());
 
-    return std::move(f2).then_wrapped([] (future<> f) {
+    return std::move(f2).then_wrapped([] (seastar::future<> f) {
         BOOST_REQUIRE(!f.failed());
     });
 }
 
 SEASTAR_TEST_CASE(test_future_forwarding__ready_to_armed) {
-    promise<> p2;
+    seastar::promise<> p2;
 
-    auto f1 = make_ready_future<>();
+    auto f1 = seastar::make_ready_future<>();
     auto f2 = p2.get_future();
 
     auto called = std::move(f2).then([] {});
@@ -468,16 +467,16 @@ SEASTAR_TEST_CASE(test_future_forwarding__ready_to_armed) {
     return called;
 }
 
-static void forward_dead_unarmed_promise_with_dead_future_to(promise<>& p) {
-    promise<> p2;
+static void forward_dead_unarmed_promise_with_dead_future_to(seastar::promise<>& p) {
+    seastar::promise<> p2;
     p.get_future().forward_to(std::move(p2));
 }
 
 SEASTAR_TEST_CASE(test_future_forwarding__ready_to_unarmed_soon_to_be_dead) {
-    promise<> p1;
+    seastar::promise<> p1;
     forward_dead_unarmed_promise_with_dead_future_to(p1);
-    make_ready_future<>().forward_to(std::move(p1));
-    return make_ready_future<>();
+    seastar::make_ready_future<>().forward_to(std::move(p1));
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_exception_can_be_thrown_from_do_until_body) {
@@ -516,18 +515,18 @@ SEASTAR_TEST_CASE(test_bare_value_can_be_returned_from_callback) {
 }
 
 SEASTAR_TEST_CASE(test_when_all_iterator_range) {
-    std::vector<future<size_t>> futures;
+    std::vector<seastar::future<size_t>> futures;
     for (size_t i = 0; i != 1000000; ++i) {
         // Use a mix of available and unavailable futures to exercise
-        // both paths in when_all().
-        auto fut = (i % 2) == 0 ? make_ready_future<>() : yield();
+        // both paths in seastar::when_all().
+        auto fut = (i % 2) == 0 ? seastar::make_ready_future<>() : yield();
         futures.push_back(fut.then([i] { return i; }));
     }
     // Verify the above statement is correct
     BOOST_REQUIRE(!std::all_of(futures.begin(), futures.end(),
             [] (auto& f) { return f.available(); }));
     auto p = make_shared(std::move(futures));
-    return when_all(p->begin(), p->end()).then([p] (std::vector<future<size_t>> ret) {
+    return seastar::when_all(p->begin(), p->end()).then([p] (std::vector<seastar::future<size_t>> ret) {
         BOOST_REQUIRE(std::all_of(ret.begin(), ret.end(), [] (auto& f) { return f.available(); }));
         BOOST_REQUIRE(std::all_of(ret.begin(), ret.end(), [&ret] (auto& f) { return f.get() == size_t(&f - ret.data()); }));
     });
@@ -563,12 +562,12 @@ BOOST_AUTO_TEST_CASE(test_iterator_range_estimate_vector_capacity) {
 
 // helper function for when_any tests
 template<typename Container>
-future<> when_all_but_one_succeed(Container& futures, size_t leave_out)
+seastar::future<> when_all_but_one_succeed(Container& futures, size_t leave_out)
 {
     auto sz = futures.size();
     SEASTAR_ASSERT(sz >= 1);
     SEASTAR_ASSERT(leave_out < sz);
-    std::vector<future<size_t>> all_but_one_tmp;
+    std::vector<seastar::future<size_t>> all_but_one_tmp;
     all_but_one_tmp.reserve(sz - 1);
     for (size_t i = 0 ; i < sz; i++){
         if (i == leave_out) { continue; }
@@ -576,12 +575,12 @@ future<> when_all_but_one_succeed(Container& futures, size_t leave_out)
     }
     auto all_but_one = make_shared(std::move(all_but_one_tmp));
     return when_all_succeed(all_but_one->begin(), all_but_one->end()).then([all_but_one] (auto&& _) {
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_when_any_iterator_range_i) {
-    std::vector<future<size_t>> futures;
+    std::vector<seastar::future<size_t>> futures;
     for (size_t i = 0; i != 100; ++i) {
         auto fut = yield();
         futures.push_back(fut.then([i] { return i; }));
@@ -599,7 +598,7 @@ SEASTAR_TEST_CASE(test_when_any_iterator_range_i) {
 }
 
 SEASTAR_TEST_CASE(test_when_any_iterator_range_ii) {
-    std::vector<future<size_t>> futures;
+    std::vector<seastar::future<size_t>> futures;
     for (size_t i = 0; i != 100; ++i) {
         if (i == 42) {
             auto fut = seastar::make_ready_future<>();
@@ -619,7 +618,7 @@ SEASTAR_TEST_CASE(test_when_any_iterator_range_ii) {
 }
 
 SEASTAR_TEST_CASE(test_when_any_iterator_range_iii) {
-    std::vector<future<size_t>> futures;
+    std::vector<seastar::future<size_t>> futures;
     for (size_t i = 0; i != 100; ++i) {
         if (i == 42) {
             auto fut = seastar::sleep(5ms);
@@ -639,7 +638,7 @@ SEASTAR_TEST_CASE(test_when_any_iterator_range_iii) {
 }
 
 SEASTAR_TEST_CASE(test_when_any_iterator_range_iv) {
-    std::vector<future<size_t>> futures;
+    std::vector<seastar::future<size_t>> futures;
     for (size_t i = 0; i != 100; ++i) {
         if (i == 42) {
             auto fut = yield().then([] { return seastar::make_exception_future(std::runtime_error("test")); } );
@@ -659,10 +658,10 @@ SEASTAR_TEST_CASE(test_when_any_iterator_range_iv) {
 
 SEASTAR_TEST_CASE(test_when_any_variadic_i)
 {
-    auto f_int = yield().then([] { return make_ready_future<int>(42); });
-    auto f_string = sleep(100ms).then([] { return make_ready_future<sstring>("hello"); });
+    auto f_int = yield().then([] { return seastar::make_ready_future<int>(42); });
+    auto f_string = sleep(100ms).then([] { return seastar::make_ready_future<seastar::sstring>("hello"); });
     auto f_l33tspeak = sleep(100ms).then([] {
-        return make_ready_future<std::tuple<char, int, int, char, char, int, char>>(
+        return seastar::make_ready_future<std::tuple<char, int, int, char, char, int, char>>(
             std::make_tuple('s', 3, 4, 's', 't', 4, 'r'));
     });
     return when_any(std::move(f_int), std::move(f_string), std::move(f_l33tspeak)).then([](auto&& wa_result) {
@@ -679,11 +678,11 @@ SEASTAR_TEST_CASE(test_when_any_variadic_ii)
         int bar = 86;
     };
 
-    auto f_int = sleep(100ms).then([] { return make_ready_future<int>(42); });
-    auto f_foo = sleep(75ms).then([] { return make_ready_future<foo>(); });
-    auto f_string = sleep(1ms).then([] { return make_ready_future<sstring>("hello"); });
+    auto f_int = sleep(100ms).then([] { return seastar::make_ready_future<int>(42); });
+    auto f_foo = sleep(75ms).then([] { return seastar::make_ready_future<foo>(); });
+    auto f_string = sleep(1ms).then([] { return seastar::make_ready_future<seastar::sstring>("hello"); });
     auto f_l33tspeak = sleep(50ms).then([] {
-        return make_ready_future<std::tuple<char, int, int, char, char, int, char>>(
+        return seastar::make_ready_future<std::tuple<char, int, int, char, char, int, char>>(
             std::make_tuple('s', 3, 4, 's', 't', 4, 'r'));
     });
     return when_any(std::move(f_int), std::move(f_foo), std::move(f_string), std::move(f_l33tspeak))
@@ -706,7 +705,7 @@ SEASTAR_TEST_CASE(test_when_any_variadic_ii)
 }
 
 SEASTAR_TEST_CASE(test_map_reduce) {
-    auto square = [] (long x) { return make_ready_future<long>(x*x); };
+    auto square = [] (long x) { return seastar::make_ready_future<long>(x*x); };
     long n = 1000;
     return map_reduce(boost::make_counting_iterator<long>(0), boost::make_counting_iterator<long>(n),
             square, long(0), std::plus<long>()).then([n] (auto result) {
@@ -716,7 +715,7 @@ SEASTAR_TEST_CASE(test_map_reduce) {
 }
 
 SEASTAR_TEST_CASE(test_map_reduce_simple) {
-    return do_with(0L, [] (auto& res) {
+    return seastar::do_with(0L, [] (auto& res) {
         long n = 10;
         return map_reduce(boost::make_counting_iterator<long>(0), boost::make_counting_iterator<long>(n),
                 [] (long x) { return x; },
@@ -728,7 +727,7 @@ SEASTAR_TEST_CASE(test_map_reduce_simple) {
 }
 
 SEASTAR_TEST_CASE(test_map_reduce_tuple) {
-    return do_with(0L, 0L, [] (auto& res0, auto& res1) {
+    return seastar::do_with(0L, 0L, [] (auto& res0, auto& res1) {
         long n = 10;
         return map_reduce(boost::make_counting_iterator<long>(0), boost::make_counting_iterator<long>(n),
                 [] (long x) { return std::tuple<long, long>(x, -x); },
@@ -771,7 +770,7 @@ SEASTAR_TEST_CASE(test_map_reduce_lifetime) {
             });
         }
     };
-    return do_with(0L, [] (auto& res) {
+    return seastar::do_with(0L, [] (auto& res) {
         long n = 10;
         return map_reduce(boost::make_counting_iterator<long>(0), boost::make_counting_iterator<long>(n),
                 map{}, reduce{res}).then([n, &res] {
@@ -844,7 +843,7 @@ SEASTAR_TEST_CASE(test_map_reduce1_lifetime) {
             return yield().then([this, x] {
                 BOOST_REQUIRE(!destroyed);
                 res += x;
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
         }
         auto get() {
@@ -868,7 +867,7 @@ SEASTAR_TEST_CASE(map_reduce_with_throwing_mapper) {
         auto ret = co_await map_reduce(
             vec,
             // Mapper: identity function, but throws
-            [] (int x) -> future<int> {
+            [] (int x) -> seastar::future<int> {
                 if (x == 5) {
                     throw std::runtime_error("test");
                 }
@@ -895,7 +894,7 @@ SEASTAR_TEST_CASE(map_reduce_with_throwing_reducer) {
         auto ret = co_await map_reduce(
             vec,
             // Mapper: square function
-            [] (int x) -> future<int> {
+            [] (int x) -> seastar::future<int> {
                 co_return x * x;
             },
             // Initial value (and accumulator): move-only type
@@ -925,63 +924,63 @@ SEASTAR_TEST_CASE(test_sleep) {
 }
 
 SEASTAR_TEST_CASE(test_do_with_1) {
-    return do_with(1, [] (int& one) {
+    return seastar::do_with(1, [] (int& one) {
        BOOST_REQUIRE_EQUAL(one, 1);
-       return make_ready_future<>();
+       return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_2) {
-    return do_with(1, 2L, [] (int& one, long two) {
+    return seastar::do_with(1, 2L, [] (int& one, long two) {
         BOOST_REQUIRE_EQUAL(one, 1);
         BOOST_REQUIRE_EQUAL(two, 2);
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_3) {
-    return do_with(1, 2L, 3, [] (int& one, long two, int three) {
+    return seastar::do_with(1, 2L, 3, [] (int& one, long two, int three) {
         BOOST_REQUIRE_EQUAL(one, 1);
         BOOST_REQUIRE_EQUAL(two, 2);
         BOOST_REQUIRE_EQUAL(three, 3);
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_4) {
-    return do_with(1, 2L, 3, 4, [] (int& one, long two, int three, int four) {
+    return seastar::do_with(1, 2L, 3, 4, [] (int& one, long two, int three, int four) {
         BOOST_REQUIRE_EQUAL(one, 1);
         BOOST_REQUIRE_EQUAL(two, 2);
         BOOST_REQUIRE_EQUAL(three, 3);
         BOOST_REQUIRE_EQUAL(four, 4);
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_5) {
     using func = noncopyable_function<void()>;
-    return do_with(func([] {}), [] (func&) {
-        return make_ready_future<>();
+    return seastar::do_with(func([] {}), [] (func&) {
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_6) {
     const int x = 42;
-    return do_with(int(42), x, [](int&, int&) {
-        return make_ready_future<>();
+    return seastar::do_with(int(42), x, [](int&, int&) {
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_with_7) {
     const int x = 42;
-    return do_with(x, [](int&) {
-        return make_ready_future<>();
+    return seastar::do_with(x, [](int&) {
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_do_while_stopping_immediately) {
-    return do_with(int(0), [] (int& count) {
-        return repeat([&count] {
+    return seastar::do_with(int(0), [] (int& count) {
+        return seastar::repeat([&count] {
             ++count;
             return stop_iteration::yes;
         }).then([&count] {
@@ -991,8 +990,8 @@ SEASTAR_TEST_CASE(test_do_while_stopping_immediately) {
 }
 
 SEASTAR_TEST_CASE(test_do_while_stopping_after_two_iterations) {
-    return do_with(int(0), [] (int& count) {
-        return repeat([&count] {
+    return seastar::do_with(int(0), [] (int& count) {
+        return seastar::repeat([&count] {
             ++count;
             return count == 2 ? stop_iteration::yes : stop_iteration::no;
         }).then([&count] {
@@ -1002,7 +1001,7 @@ SEASTAR_TEST_CASE(test_do_while_stopping_after_two_iterations) {
 }
 
 SEASTAR_TEST_CASE(test_do_while_failing_in_the_first_step) {
-    return repeat([] {
+    return seastar::repeat([] {
         throw expected_exception();
         return stop_iteration::no;
     }).then_wrapped([](auto&& f) {
@@ -1016,8 +1015,8 @@ SEASTAR_TEST_CASE(test_do_while_failing_in_the_first_step) {
 }
 
 SEASTAR_TEST_CASE(test_do_while_failing_in_the_second_step) {
-    return do_with(int(0), [] (int& count) {
-        return repeat([&count] {
+    return seastar::do_with(int(0), [] (int& count) {
+        return seastar::repeat([&count] {
             ++count;
             if (count > 1) {
                 throw expected_exception();
@@ -1037,7 +1036,7 @@ SEASTAR_TEST_CASE(test_do_while_failing_in_the_second_step) {
 SEASTAR_TEST_CASE(test_parallel_for_each) {
     return async([] {
         // empty
-        parallel_for_each(std::vector<int>(), [] (int) -> future<> {
+        parallel_for_each(std::vector<int>(), [] (int) -> seastar::future<> {
             BOOST_FAIL("should not reach");
             abort();
         }).get();
@@ -1047,7 +1046,7 @@ SEASTAR_TEST_CASE(test_parallel_for_each) {
         auto sum = 0;
         parallel_for_each(range, [&sum] (int v) {
             sum += v;
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         }).get();
         BOOST_REQUIRE_EQUAL(sum, 15);
 
@@ -1061,7 +1060,7 @@ SEASTAR_TEST_CASE(test_parallel_for_each) {
         BOOST_REQUIRE_EQUAL(sum, 15);
 
         // throws immediately
-        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [] (int) -> future<> {
+        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [] (int) -> seastar::future<> {
             throw 5;
         }).get(), int, [] (int v) { return v == 5; });
 
@@ -1075,7 +1074,7 @@ SEASTAR_TEST_CASE(test_parallel_for_each) {
 }
 
 SEASTAR_TEST_CASE(test_parallel_for_each_early_failure) {
-    return do_with(0, [] (int& counter) {
+    return seastar::do_with(0, [] (int& counter) {
         return parallel_for_each(std::views::iota(0, 11000), [&counter] (int i) {
             using namespace std::chrono_literals;
             // force scheduling
@@ -1084,9 +1083,9 @@ SEASTAR_TEST_CASE(test_parallel_for_each_early_failure) {
                 if (i % 1777 == 1337) {
                     return make_exception_future<>(i);
                 }
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
-        }).then_wrapped([&counter] (future<> f) {
+        }).then_wrapped([&counter] (seastar::future<> f) {
             BOOST_REQUIRE_EQUAL(counter, 11000);
             BOOST_REQUIRE(f.failed());
             try {
@@ -1102,7 +1101,7 @@ SEASTAR_TEST_CASE(test_parallel_for_each_early_failure) {
 }
 
 SEASTAR_TEST_CASE(test_parallel_for_each_waits_for_all_fibers_even_if_one_of_them_failed) {
-    auto can_exit = make_lw_shared<bool>(false);
+    auto can_exit = seastar::make_lw_shared<bool>(false);
     return parallel_for_each(std::views::iota(0, 2), [can_exit] (int i) {
         return yield().then([i, can_exit] {
             if (i == 1) {
@@ -1126,8 +1125,8 @@ SEASTAR_TEST_CASE(test_parallel_for_each_waits_for_all_fibers_even_if_one_of_the
 
 SEASTAR_THREAD_TEST_CASE(test_parallel_for_each_broken_promise) {
     auto fut = [] {
-        std::vector<promise<>> v(2);
-        return parallel_for_each(v, [] (promise<>& p) {
+        std::vector<seastar::promise<>> v(2);
+        return parallel_for_each(v, [] (seastar::promise<>& p) {
             return p.get_future();
         });
     }();
@@ -1136,11 +1135,11 @@ SEASTAR_THREAD_TEST_CASE(test_parallel_for_each_broken_promise) {
 
 SEASTAR_THREAD_TEST_CASE(test_repeat_broken_promise) {
     auto get_fut = [] {
-        promise<stop_iteration> pr;
+        seastar::promise<stop_iteration> pr;
         return pr.get_future();
     };
 
-    future<> r = repeat([fut = get_fut()] () mutable {
+    seastar::future<> r = seastar::repeat([fut = get_fut()] () mutable {
         return std::move(fut);
     });
 
@@ -1149,14 +1148,14 @@ SEASTAR_THREAD_TEST_CASE(test_repeat_broken_promise) {
 
 #ifndef SEASTAR_SHUFFLE_TASK_QUEUE
 SEASTAR_TEST_CASE(test_high_priority_task_runs_in_the_middle_of_loops) {
-    auto counter = make_lw_shared<int>(0);
-    auto flag = make_lw_shared<bool>(false);
-    return repeat([counter, flag] {
+    auto counter = seastar::make_lw_shared<int>(0);
+    auto flag = seastar::make_lw_shared<bool>(false);
+    return seastar::repeat([counter, flag] {
         if (*counter == 1) {
             BOOST_REQUIRE(*flag);
             return stop_iteration::yes;
         }
-        engine().add_high_priority_task(make_task([flag] {
+        seastar::engine().add_high_priority_task(make_task([flag] {
             *flag = true;
         }));
         ++(*counter);
@@ -1166,7 +1165,7 @@ SEASTAR_TEST_CASE(test_high_priority_task_runs_in_the_middle_of_loops) {
 #endif
 
 SEASTAR_TEST_CASE(futurize_invoke_val_exception) {
-    return futurize_invoke([] (int arg) { throw expected_exception(); return arg; }, 1).then_wrapped([] (future<int> f) {
+    return futurize_invoke([] (int arg) { throw expected_exception(); return arg; }, 1).then_wrapped([] (seastar::future<int> f) {
         try {
             f.get();
             BOOST_FAIL("should have thrown");
@@ -1175,7 +1174,7 @@ SEASTAR_TEST_CASE(futurize_invoke_val_exception) {
 }
 
 SEASTAR_TEST_CASE(futurize_invoke_val_ok) {
-    return futurize_invoke([] (int arg) { return arg * 2; }, 2).then_wrapped([] (future<int> f) {
+    return futurize_invoke([] (int arg) { return arg * 2; }, 2).then_wrapped([] (seastar::future<int> f) {
         try {
             auto x = f.get();
             BOOST_REQUIRE_EQUAL(x, 4);
@@ -1189,9 +1188,9 @@ SEASTAR_TEST_CASE(futurize_invoke_val_future_exception) {
     return futurize_invoke([] (int a) {
         return sleep(std::chrono::milliseconds(100)).then([] {
             throw expected_exception();
-            return make_ready_future<int>(0);
+            return seastar::make_ready_future<int>(0);
         });
-    }, 0).then_wrapped([] (future<int> f) {
+    }, 0).then_wrapped([] (seastar::future<int> f) {
         try {
             f.get();
             BOOST_FAIL("should have thrown");
@@ -1202,9 +1201,9 @@ SEASTAR_TEST_CASE(futurize_invoke_val_future_exception) {
 SEASTAR_TEST_CASE(futurize_invoke_val_future_ok) {
     return futurize_invoke([] (int a) {
         return sleep(std::chrono::milliseconds(100)).then([a] {
-            return make_ready_future<int>(a * 100);
+            return seastar::make_ready_future<int>(a * 100);
         });
-    }, 2).then_wrapped([] (future<int> f) {
+    }, 2).then_wrapped([] (seastar::future<int> f) {
         try {
             auto x = f.get();
             BOOST_REQUIRE_EQUAL(x, 200);
@@ -1214,7 +1213,7 @@ SEASTAR_TEST_CASE(futurize_invoke_val_future_ok) {
     });
 }
 SEASTAR_TEST_CASE(futurize_invoke_void_exception) {
-    return futurize_invoke([] (auto arg) { throw expected_exception(); }, 0).then_wrapped([] (future<> f) {
+    return futurize_invoke([] (auto arg) { throw expected_exception(); }, 0).then_wrapped([] (seastar::future<> f) {
         try {
             f.get();
             BOOST_FAIL("should have thrown");
@@ -1223,7 +1222,7 @@ SEASTAR_TEST_CASE(futurize_invoke_void_exception) {
 }
 
 SEASTAR_TEST_CASE(futurize_invoke_void_ok) {
-    return futurize_invoke([] (auto arg) { }, 0).then_wrapped([] (future<> f) {
+    return futurize_invoke([] (auto arg) { }, 0).then_wrapped([] (seastar::future<> f) {
         try {
             f.get();
         } catch (expected_exception& e) {
@@ -1237,7 +1236,7 @@ SEASTAR_TEST_CASE(futurize_invoke_void_future_exception) {
         return sleep(std::chrono::milliseconds(100)).then([] {
             throw expected_exception();
         });
-    }, 0).then_wrapped([] (future<> f) {
+    }, 0).then_wrapped([] (seastar::future<> f) {
         try {
             f.get();
             BOOST_FAIL("should have thrown");
@@ -1246,12 +1245,12 @@ SEASTAR_TEST_CASE(futurize_invoke_void_future_exception) {
 }
 
 SEASTAR_TEST_CASE(futurize_invoke_void_future_ok) {
-    auto a = make_lw_shared<int>(1);
+    auto a = seastar::make_lw_shared<int>(1);
     return futurize_invoke([] (int& a) {
         return sleep(std::chrono::milliseconds(100)).then([&a] {
             a *= 100;
         });
-    }, *a).then_wrapped([a] (future<> f) {
+    }, *a).then_wrapped([a] (seastar::future<> f) {
         try {
             f.get();
             BOOST_REQUIRE_EQUAL(*a, 100);
@@ -1262,14 +1261,14 @@ SEASTAR_TEST_CASE(futurize_invoke_void_future_ok) {
 }
 
 SEASTAR_TEST_CASE(test_unused_shared_future_is_not_a_broken_future) {
-    promise<> p;
+    seastar::promise<> p;
     shared_future<> s(p.get_future());
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_shared_future_propagates_value_to_all) {
     return seastar::async([] {
-        promise<shared_ptr<int>> p; // shared_ptr<> to check it deals with emptyable types
+        seastar::promise<shared_ptr<int>> p; // shared_ptr<> to check it deals with emptyable types
         shared_future<shared_ptr<int>> f(p.get_future());
 
         auto f1 = f.get_future();
@@ -1282,7 +1281,7 @@ SEASTAR_TEST_CASE(test_shared_future_propagates_value_to_all) {
 }
 
 template<typename... T>
-void check_fails_with_expected(future<T...> f) {
+void check_fails_with_expected(seastar::future<T...> f) {
     try {
         f.get();
         BOOST_FAIL("Should have failed");
@@ -1293,7 +1292,7 @@ void check_fails_with_expected(future<T...> f) {
 
 SEASTAR_TEST_CASE(test_shared_future_propagates_value_to_copies) {
     return seastar::async([] {
-        promise<int> p;
+        seastar::promise<int> p;
         auto sf1 = shared_future<int>(p.get_future());
         auto sf2 = sf1;
 
@@ -1308,8 +1307,8 @@ SEASTAR_TEST_CASE(test_shared_future_propagates_value_to_copies) {
 }
 
 SEASTAR_TEST_CASE(test_obtaining_future_from_shared_future_after_it_is_resolved) {
-    promise<int> p1;
-    promise<int> p2;
+    seastar::promise<int> p1;
+    seastar::promise<int> p2;
     auto sf1 = shared_future<int>(p1.get_future());
     auto sf2 = shared_future<int>(p2.get_future());
     p1.set_value(1);
@@ -1324,7 +1323,7 @@ SEASTAR_TEST_CASE(test_obtaining_future_from_shared_future_after_it_is_resolved)
 
 SEASTAR_TEST_CASE(test_valueless_shared_future) {
     return seastar::async([] {
-        promise<> p;
+        seastar::promise<> p;
         shared_future<> f(p.get_future());
 
         auto f1 = f.get_future();
@@ -1338,7 +1337,7 @@ SEASTAR_TEST_CASE(test_valueless_shared_future) {
 }
 
 SEASTAR_TEST_CASE(test_shared_future_propagates_errors_to_all) {
-    promise<int> p;
+    seastar::promise<int> p;
     shared_future<int> f(p.get_future());
 
     auto f1 = f.get_future();
@@ -1356,36 +1355,36 @@ SEASTAR_TEST_CASE(test_shared_future_propagates_errors_to_all) {
 
 SEASTAR_TEST_CASE(test_ignored_future_warning) {
     // This doesn't warn:
-    promise<> p;
+    seastar::promise<> p;
     p.set_exception(expected_exception());
-    future<> f = p.get_future();
+    seastar::future<> f = p.get_future();
     f.ignore_ready_future();
 
     // And by analogy, neither should this
     shared_promise<> p2;
     p2.set_exception(expected_exception());
-    future<> f2 = p2.get_shared_future();
+    seastar::future<> f2 = p2.get_shared_future();
     f2.ignore_ready_future();
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_futurize_from_tuple) {
     std::tuple<int> v1 = std::make_tuple(3);
     std::tuple<> v2 = {};
-    future<int> fut1 = futurize<int>::from_tuple(v1);
-    future<> fut2 = futurize<void>::from_tuple(v2);
+    seastar::future<int> fut1 = futurize<int>::from_tuple(v1);
+    seastar::future<> fut2 = futurize<void>::from_tuple(v2);
     BOOST_REQUIRE(fut1.get() == std::get<0>(v1));
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_repeat_until_value) {
-    return do_with(int(), [] (int& counter) {
-        return repeat_until_value([&counter] () -> future<std::optional<int>> {
+    return seastar::do_with(int(), [] (int& counter) {
+        return repeat_until_value([&counter] () -> seastar::future<std::optional<int>> {
             if (counter == 10000) {
-                return make_ready_future<std::optional<int>>(counter);
+                return seastar::make_ready_future<std::optional<int>>(counter);
             } else {
                 ++counter;
-                return make_ready_future<std::optional<int>>(std::nullopt);
+                return seastar::make_ready_future<std::optional<int>>(std::nullopt);
             }
         }).then([&counter] (int result) {
             BOOST_REQUIRE(counter == 10000);
@@ -1395,8 +1394,8 @@ SEASTAR_TEST_CASE(test_repeat_until_value) {
 }
 
 SEASTAR_TEST_CASE(test_repeat_until_value_implicit_future) {
-    // Same as above, but returning std::optional<int> instead of future<std::optional<int>>
-    return do_with(int(), [] (int& counter) {
+    // Same as above, but returning std::optional<int> instead of seastar::future<std::optional<int>>
+    return seastar::do_with(int(), [] (int& counter) {
         return repeat_until_value([&counter] {
             if (counter == 10000) {
                 return std::optional<int>(counter);
@@ -1415,13 +1414,13 @@ SEASTAR_TEST_CASE(test_repeat_until_value_exception) {
     return repeat_until_value([] {
         throw expected_exception();
         return std::optional<int>(43);
-    }).then_wrapped([] (future<int> f) {
+    }).then_wrapped([] (seastar::future<int> f) {
         check_fails_with_expected(std::move(f));
     });
 }
 
 SEASTAR_TEST_CASE(test_when_allx) {
-    return when_all(yield(), yield(), make_ready_future()).discard_result();
+    return seastar::when_all(yield(), yield(), make_ready_future()).discard_result();
 }
 
 // A noncopyable and nonmovable struct
@@ -1434,12 +1433,12 @@ struct non_copy_non_move {
 SEASTAR_TEST_CASE(test_when_all_functions) {
     auto f = [x = non_copy_non_move()] {
         (void)x;
-        return make_ready_future<int>(42);
+        return seastar::make_ready_future<int>(42);
     };
-    return when_all(f, [] {
+    return seastar::when_all(f, [] {
         throw 42;
-        return make_ready_future<>();
-    }, yield()).then([] (std::tuple<future<int>, future<>, future<>> res) {
+        return seastar::make_ready_future<>();
+    }, yield()).then([] (std::tuple<seastar::future<int>, seastar::future<>, seastar::future<>> res) {
         BOOST_REQUIRE_EQUAL(std::get<0>(res).get(), 42);
 
         BOOST_REQUIRE(std::get<1>(res).available());
@@ -1448,28 +1447,28 @@ SEASTAR_TEST_CASE(test_when_all_functions) {
 
         BOOST_REQUIRE(std::get<2>(res).available());
         BOOST_REQUIRE(!std::get<2>(res).failed());
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 SEASTAR_TEST_CASE(test_when_all_succeed_functions) {
     auto f = [x = non_copy_non_move()] {
         (void)x;
-        return make_ready_future<int>(42);
+        return seastar::make_ready_future<int>(42);
     };
     return when_all_succeed(f, [] {
         throw 42;
-        return make_ready_future<>();
-    }, yield()).then_wrapped([] (future<std::tuple<int>> res) {
+        return seastar::make_ready_future<>();
+    }, yield()).then_wrapped([] (seastar::future<std::tuple<int>> res) {
         BOOST_REQUIRE(res.available());
         BOOST_REQUIRE(res.failed());
         res.ignore_ready_future();
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
 template<typename E, typename... T>
-static void check_failed_with(future<T...>&& f) {
+static void check_failed_with(seastar::future<T...>&& f) {
     BOOST_REQUIRE(f.failed());
     try {
         f.get();
@@ -1482,13 +1481,13 @@ static void check_failed_with(future<T...>&& f) {
 }
 
 template<typename... T>
-static void check_timed_out(future<T...>&& f) {
+static void check_timed_out(seastar::future<T...>&& f) {
     check_failed_with<timed_out_error>(std::move(f));
 }
 
 SEASTAR_TEST_CASE(test_with_timeout_when_it_times_out) {
     return seastar::async([] {
-        promise<> pr;
+        seastar::promise<> pr;
         auto f = with_timeout(manual_clock::now() + 2s, pr.get_future());
 
         BOOST_REQUIRE(!f.available());
@@ -1512,19 +1511,19 @@ SEASTAR_THREAD_TEST_CASE(test_shared_future_get_future_after_timeout) {
     // pending futures was empty to decide if it had already called
     // then_wrapped. If all pending futures timed out, it would call
     // it again.
-    promise<> pr;
+    seastar::promise<> pr;
     shared_future<with_clock<manual_clock>> sfut(pr.get_future());
-    future<> fut1 = sfut.get_future(manual_clock::now() + 1s);
+    seastar::future<> fut1 = sfut.get_future(manual_clock::now() + 1s);
 
     manual_clock::advance(1s);
 
     check_timed_out(std::move(fut1));
 
-    future<> fut2 = sfut.get_future(manual_clock::now() + 1s);
+    seastar::future<> fut2 = sfut.get_future(manual_clock::now() + 1s);
     manual_clock::advance(1s);
     check_timed_out(std::move(fut2));
 
-    future<> fut3 = sfut.get_future(manual_clock::now() + 1s);
+    seastar::future<> fut3 = sfut.get_future(manual_clock::now() + 1s);
     pr.set_value();
     fut3.get();
 }
@@ -1542,7 +1541,7 @@ SEASTAR_TEST_CASE(test_custom_exception_factory_in_with_timeout) {
                 return custom_error();
             }
         };
-        promise<> pr;
+        seastar::promise<> pr;
         auto f = with_timeout<my_exception_factory>(manual_clock::now() + 1s, pr.get_future());
 
         manual_clock::advance(1s);
@@ -1555,7 +1554,7 @@ SEASTAR_TEST_CASE(test_custom_exception_factory_in_with_timeout) {
 SEASTAR_TEST_CASE(test_with_timeout_when_it_does_not_time_out) {
     return seastar::async([] {
         {
-            promise<int> pr;
+            seastar::promise<int> pr;
             auto f = with_timeout(manual_clock::now() + 1s, pr.get_future());
 
             pr.set_value(42);
@@ -1570,7 +1569,7 @@ SEASTAR_TEST_CASE(test_with_timeout_when_it_does_not_time_out) {
 }
 
 template<typename... T>
-static void check_aborted(future<T...>&& f) {
+static void check_aborted(seastar::future<T...>&& f) {
     check_failed_with<abort_requested_exception>(std::move(f));
 }
 
@@ -1605,8 +1604,8 @@ SEASTAR_TEST_CASE(test_shared_future_with_timeout) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_shared_future_with_abort) {
-    abort_source as;
-    abort_source as2;
+    seastar::abort_source as;
+    seastar::abort_source as2;
     shared_promise<with_clock<manual_clock>, int> pr;
     auto f1 = pr.get_shared_future(as);
     auto f2 = pr.get_shared_future(as2);
@@ -1662,7 +1661,7 @@ public:
 SEASTAR_THREAD_TEST_CASE(test_shared_future_task_scheduled_only_if_there_are_waiting_futures) {
     {
         // Case 1: promise is eventually satisfied, get_future is not called
-        promise<> pr1;
+        seastar::promise<> pr1;
         shared_future<> f1(pr1.get_future());
         BOOST_REQUIRE(!shared_future_tester::has_scheduled_task(f1));
 
@@ -1673,7 +1672,7 @@ SEASTAR_THREAD_TEST_CASE(test_shared_future_task_scheduled_only_if_there_are_wai
 
     {
         // Case 2: promise is eventually satisfied, get_future was called
-        promise<> pr2;
+        seastar::promise<> pr2;
         shared_future<> f2(pr2.get_future());
         auto f2f = f2.get_future();
 
@@ -1688,7 +1687,7 @@ SEASTAR_THREAD_TEST_CASE(test_shared_future_task_scheduled_only_if_there_are_wai
 
     {
         // Case 3: shared future is ready from the start
-        shared_future<> f3(make_ready_future<>());
+        shared_future<> f3(seastar::make_ready_future<>());
         BOOST_REQUIRE(!shared_future_tester::has_scheduled_task(f3));
 
         auto f3f = f3.get_future();
@@ -1700,13 +1699,13 @@ SEASTAR_THREAD_TEST_CASE(test_shared_future_task_scheduled_only_if_there_are_wai
 
 SEASTAR_TEST_CASE(test_when_all_succeed_tuples) {
     return seastar::when_all_succeed(
-        make_ready_future<>(),
-        make_ready_future<sstring>("hello world"),
-        make_ready_future<int>(42),
-        make_ready_future<>(),
-        make_ready_future<std::tuple<int, sstring>>(std::tuple(84, "hi")),
-        make_ready_future<bool>(true)
-    ).then_unpack([] (sstring msg, int v, std::tuple<int, sstring> t, bool b) {
+        seastar::make_ready_future<>(),
+        seastar::make_ready_future<seastar::sstring>("hello world"),
+        seastar::make_ready_future<int>(42),
+        seastar::make_ready_future<>(),
+        seastar::make_ready_future<std::tuple<int, seastar::sstring>>(std::tuple(84, "hi")),
+        seastar::make_ready_future<bool>(true)
+    ).then_unpack([] (seastar::sstring msg, int v, std::tuple<int, seastar::sstring> t, bool b) {
         BOOST_REQUIRE_EQUAL(msg, "hello world");
         BOOST_REQUIRE_EQUAL(v, 42);
         BOOST_REQUIRE_EQUAL(std::get<0>(t), 84);
@@ -1715,10 +1714,10 @@ SEASTAR_TEST_CASE(test_when_all_succeed_tuples) {
 
         return seastar::when_all_succeed(
                 make_exception_future<>(42),
-                make_ready_future<sstring>("hello world"),
+                seastar::make_ready_future<seastar::sstring>("hello world"),
                 make_exception_future<int>(43),
-                make_ready_future<>()
-        ).then_unpack([] (sstring, int) {
+                seastar::make_ready_future<>()
+        ).then_unpack([] (seastar::sstring, int) {
             BOOST_FAIL("shouldn't reach");
             return false;
         }).handle_exception([] (auto excp) {
@@ -1736,16 +1735,16 @@ SEASTAR_TEST_CASE(test_when_all_succeed_tuples) {
 }
 
 SEASTAR_TEST_CASE(test_when_all_succeed_vector_overload) {
-    std::vector<future<int>> vecs_noexcept;
+    std::vector<seastar::future<int>> vecs_noexcept;
     vecs_noexcept.reserve(10);
     for(int i = 0; i < 10; i++) {
-        vecs_noexcept.emplace_back(i % 2 == 0 ? make_ready_future<int>(42) : yield().then([] { return 42; }));
+        vecs_noexcept.emplace_back(i % 2 == 0 ? seastar::make_ready_future<int>(42) : yield().then([] { return 42; }));
     }
 
-    std::vector<future<int>> vecs_except;
+    std::vector<seastar::future<int>> vecs_except;
     vecs_except.reserve(10);
     for(int i = 0; i < 10; i++) {
-        vecs_except.emplace_back(i % 2 == 0 ? make_ready_future<int>(42) : make_exception_future<int>(43));
+        vecs_except.emplace_back(i % 2 == 0 ? seastar::make_ready_future<int>(42) : make_exception_future<int>(43));
     }
 
     return seastar::when_all_succeed(std::move(vecs_noexcept))
@@ -1772,15 +1771,15 @@ SEASTAR_TEST_CASE(test_when_all_succeed_vector_overload) {
 }
 
 SEASTAR_TEST_CASE(test_when_all_succeed_vector) {
-    std::vector<future<>> vecs;
-    vecs.emplace_back(make_ready_future<>());
-    vecs.emplace_back(make_ready_future<>());
-    vecs.emplace_back(make_ready_future<>());
-    vecs.emplace_back(make_ready_future<>());
+    std::vector<seastar::future<>> vecs;
+    vecs.emplace_back(seastar::make_ready_future<>());
+    vecs.emplace_back(seastar::make_ready_future<>());
+    vecs.emplace_back(seastar::make_ready_future<>());
+    vecs.emplace_back(seastar::make_ready_future<>());
     return seastar::when_all_succeed(vecs.begin(), vecs.end()).then([] {
-        std::vector<future<>> vecs;
-        vecs.emplace_back(make_ready_future<>());
-        vecs.emplace_back(make_ready_future<>());
+        std::vector<seastar::future<>> vecs;
+        vecs.emplace_back(seastar::make_ready_future<>());
+        vecs.emplace_back(seastar::make_ready_future<>());
         vecs.emplace_back(make_exception_future<>(42));
         vecs.emplace_back(make_exception_future<>(43));
         return seastar::when_all_succeed(vecs.begin(), vecs.end());
@@ -1798,10 +1797,10 @@ SEASTAR_TEST_CASE(test_when_all_succeed_vector) {
     }).then([] (auto ret) {
         BOOST_REQUIRE(ret);
 
-        std::vector<future<int>> vecs;
-        vecs.emplace_back(make_ready_future<int>(1));
-        vecs.emplace_back(make_ready_future<int>(2));
-        vecs.emplace_back(make_ready_future<int>(3));
+        std::vector<seastar::future<int>> vecs;
+        vecs.emplace_back(seastar::make_ready_future<int>(1));
+        vecs.emplace_back(seastar::make_ready_future<int>(2));
+        vecs.emplace_back(seastar::make_ready_future<int>(3));
         return seastar::when_all_succeed(vecs.begin(), vecs.end());
     }).then([] (std::vector<int> vals) {
         BOOST_REQUIRE_EQUAL(vals.size(), 3u);
@@ -1809,9 +1808,9 @@ SEASTAR_TEST_CASE(test_when_all_succeed_vector) {
         BOOST_REQUIRE_EQUAL(vals[1], 2);
         BOOST_REQUIRE_EQUAL(vals[2], 3);
 
-        std::vector<future<int>> vecs;
-        vecs.emplace_back(make_ready_future<int>(1));
-        vecs.emplace_back(make_ready_future<int>(2));
+        std::vector<seastar::future<int>> vecs;
+        vecs.emplace_back(seastar::make_ready_future<int>(1));
+        vecs.emplace_back(seastar::make_ready_future<int>(2));
         vecs.emplace_back(make_exception_future<int>(42));
         vecs.emplace_back(make_exception_future<int>(43));
         return seastar::when_all_succeed(vecs.begin(), vecs.end());
@@ -1843,12 +1842,12 @@ SEASTAR_TEST_CASE(test_futurize_mutable) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
-    std::optional<future<>> f;
-    std::optional<future<>> f2;
+    std::optional<seastar::future<>> f;
+    std::optional<seastar::future<>> f2;
     { // Broken after attaching a continuation
-        auto p = promise<>();
+        auto p = seastar::promise<>();
         f = p.get_future();
-        f2 = f->then_wrapped([&] (future<> f3) {
+        f2 = f->then_wrapped([&] (seastar::future<> f3) {
             BOOST_CHECK(f3.failed());
             BOOST_CHECK_THROW(f3.get(), broken_promise);
             f = { };
@@ -1858,10 +1857,10 @@ SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
     BOOST_CHECK(!f);
 
     { // Broken before attaching a continuation
-        auto p = promise<>();
+        auto p = seastar::promise<>();
         f = p.get_future();
     }
-    f->then_wrapped([&] (future<> f3) {
+    f->then_wrapped([&] (seastar::future<> f3) {
         BOOST_CHECK(f3.failed());
         BOOST_CHECK_THROW(f3.get(), broken_promise);
         f = { };
@@ -1869,7 +1868,7 @@ SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
     BOOST_CHECK(!f);
 
     { // Broken before suspending a thread
-        auto p = promise<>();
+        auto p = seastar::promise<>();
         f = p.get_future();
     }
     BOOST_CHECK_THROW(f->get(), broken_promise);
@@ -1878,7 +1877,7 @@ SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
 SEASTAR_TEST_CASE(test_warn_on_broken_promise_with_no_future) {
     // Example code where we expect a "Exceptional future ignored"
     // warning.
-    promise<> p;
+    seastar::promise<> p;
     // Intentionally destroy the future
     (void)p.get_future();
 
@@ -1886,11 +1885,11 @@ SEASTAR_TEST_CASE(test_warn_on_broken_promise_with_no_future) {
         p.set_exception(std::runtime_error("foo"));
     });
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_destroy_promise_after_state_take_value) {
-    future<> f = make_ready_future<>();
+    seastar::future<> f = seastar::make_ready_future<>();
     auto p = std::make_unique<seastar::promise<>>();
     f = p->get_future();
     p->set_value();
@@ -1903,14 +1902,14 @@ SEASTAR_THREAD_TEST_CASE(test_exception_future_with_backtrace) {
     int counter = 0;
     auto inner = [&] (bool return_exception) mutable {
         if (!return_exception) {
-            return make_ready_future<int>(++counter);
+            return seastar::make_ready_future<int>(++counter);
         } else {
             return make_exception_future_with_backtrace<int>(expected_exception());
         }
     };
     auto outer = [&] (bool return_exception) {
         return inner(return_exception).then([] (int i) {
-            return make_ready_future<int>(-i);
+            return seastar::make_ready_future<int>(-i);
         });
     };
 
@@ -1922,7 +1921,7 @@ SEASTAR_THREAD_TEST_CASE(test_exception_future_with_backtrace) {
 
     // Example code where we expect a "Exceptional future ignored"
     // warning.
-    (void)outer(true).then_wrapped([](future<int> fut) {
+    (void)outer(true).then_wrapped([](seastar::future<int> fut) {
         reactor::test::with_allow_abandoned_failed_futures(1, [fut = std::move(fut)]() mutable {
             auto foo = std::move(fut);
         });
@@ -1950,11 +1949,11 @@ SEASTAR_TEST_CASE(test_async_throw_on_move) {
     return async([] (throw_on_move t) {
         BOOST_CHECK(false);
     }, throw_on_move()).handle_exception_type([] (const expected_exception&) {
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }
 
-future<> func4() {
+seastar::future<> func4() {
     return yield().then([] {
         seastar_logger.info("backtrace: {}", current_backtrace());
     });
@@ -1966,13 +1965,13 @@ void func3() {
     }).get();
 }
 
-future<> func2() {
+seastar::future<> func2() {
     return seastar::async([] {
         func3();
     });
 }
 
-future<> func1() {
+seastar::future<> func1() {
     return yield().then([] {
         return func2();
     });
@@ -1983,42 +1982,42 @@ SEASTAR_THREAD_TEST_CASE(test_backtracing) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_then_unpack) {
-    make_ready_future<std::tuple<>>().then_unpack([] () {
+    seastar::make_ready_future<std::tuple<>>().then_unpack([] () {
         BOOST_REQUIRE(true);
     }).get();
-    make_ready_future<std::tuple<int>>(std::tuple<int>(1)).then_unpack([] (int x) {
+    seastar::make_ready_future<std::tuple<int>>(std::tuple<int>(1)).then_unpack([] (int x) {
         BOOST_REQUIRE(x == 1);
     }).get();
-    make_ready_future<std::tuple<int, long>>(std::tuple<int, long>(1, 2)).then_unpack([] (int x, long y) {
+    seastar::make_ready_future<std::tuple<int, long>>(std::tuple<int, long>(1, 2)).then_unpack([] (int x, long y) {
         BOOST_REQUIRE(x == 1 && y == 2);
     }).get();
-    make_ready_future<std::tuple<std::unique_ptr<int>>>(std::tuple(std::make_unique<int>(42))).then_unpack([] (std::unique_ptr<int> p1) {
+    seastar::make_ready_future<std::tuple<std::unique_ptr<int>>>(std::tuple(std::make_unique<int>(42))).then_unpack([] (std::unique_ptr<int> p1) {
         BOOST_REQUIRE(*p1 == 42);
     }).get();
 }
 
-future<> test_then_function_f() {
-    return make_ready_future<>();
+seastar::future<> test_then_function_f() {
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_then_function) {
-    return make_ready_future<>().then(test_then_function_f);
+    return seastar::make_ready_future<>().then(test_then_function_f);
 }
 
 SEASTAR_THREAD_TEST_CASE(test_with_gate) {
-    gate g;
+    seastar::gate g;
     int counter = 0;
     int gate_closed_errors = 0;
     int other_errors = 0;
 
-    // test normal operation when gate is opened
-    BOOST_CHECK_NO_THROW(with_gate(g, [&] { counter++; }).get());
+    // test normal operation when seastar::gate is opened
+    BOOST_CHECK_NO_THROW(seastar::with_gate(g, [&] { counter++; }).get());
     BOOST_REQUIRE_EQUAL(counter, 1);
 
     // test that an exception returned by the calling func
-    // is propagated to with_gate future
+    // is propagated to seastar::with_gate future
     counter = gate_closed_errors = other_errors = 0;
-    BOOST_CHECK_NO_THROW(with_gate(g, [&] {
+    BOOST_CHECK_NO_THROW(seastar::with_gate(g, [&] {
             counter++;
             return make_exception_future<>(expected_exception());
         }).handle_exception_type([&] (gate_closed_exception& e) {
@@ -2032,16 +2031,16 @@ SEASTAR_THREAD_TEST_CASE(test_with_gate) {
 
     g.close().get();
 
-    // test that with_gate.get() throws when the gate is closed
+    // test that seastar::with_gate.get() throws when the seastar::gate is closed
     counter = gate_closed_errors = other_errors = 0;
-    BOOST_CHECK_THROW(with_gate(g, [&] { counter++; }).get(), gate_closed_exception);
+    BOOST_CHECK_THROW(seastar::with_gate(g, [&] { counter++; }).get(), gate_closed_exception);
     BOOST_REQUIRE(!counter);
 
-    // test that with_gate throws when the gate is closed
+    // test that seastar::with_gate throws when the seastar::gate is closed
     counter = gate_closed_errors = other_errors = 0;
-    BOOST_CHECK_THROW(with_gate(g, [&] {
+    BOOST_CHECK_THROW(seastar::with_gate(g, [&] {
             counter++;
-        }).then_wrapped([&] (future<> f) {
+        }).then_wrapped([&] (seastar::future<> f) {
             auto eptr = f.get_exception();
             try {
                 std::rethrow_exception(eptr);
@@ -2055,7 +2054,7 @@ SEASTAR_THREAD_TEST_CASE(test_with_gate) {
     BOOST_REQUIRE(!gate_closed_errors);
     BOOST_REQUIRE(!other_errors);
 
-    // test that try_with_gate returns gate_closed_exception when the gate is closed
+    // test that try_with_gate returns gate_closed_exception when the seastar::gate is closed
     counter = gate_closed_errors = other_errors = 0;
     try_with_gate(g, [&] { counter++; }).handle_exception_type([&] (gate_closed_exception& e) {
         gate_closed_errors++;
@@ -2080,7 +2079,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
     auto sum = 0;
     max_concurrent_for_each(range.begin(), range.end(), 3,  [&sum] (int v) {
         sum += v;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     BOOST_REQUIRE_EQUAL(sum, 28);
 
@@ -2088,7 +2087,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
     sum = 0;
     max_concurrent_for_each(range.cbegin(), range.cend(), 3,  [&sum] (int v) {
         sum += v;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     BOOST_REQUIRE_EQUAL(sum, 28);
 
@@ -2096,7 +2095,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
     sum = 0;
     max_concurrent_for_each(range.rbegin(), range.rend(), 3,  [&sum] (int v) {
         sum += v;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     BOOST_REQUIRE_EQUAL(sum, 28);
 
@@ -2104,7 +2103,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
     sum = 0;
     max_concurrent_for_each(range, 3,  [&sum] (int v) {
         sum += v;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     BOOST_REQUIRE_EQUAL(sum, 28);
 
@@ -2124,7 +2123,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
         if (v == 1) {
             throw 5;
         }
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get(), int, [] (int v) { return v == 5; });
     BOOST_REQUIRE_EQUAL(sum, 28);
 
@@ -2143,7 +2142,7 @@ SEASTAR_THREAD_TEST_CASE(test_max_concurrent_for_each) {
     sum = 0;
     max_concurrent_for_each(range, range.size() + 3,  [&sum] (int v) {
         sum += v;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     BOOST_REQUIRE_EQUAL(sum, 28);
 }
@@ -2192,10 +2191,10 @@ SEASTAR_TEST_CASE(test_make_exception_future) {
     // When make_exception_future() is given most types - like int and
     // std::runtime_error - a copy of the given value get stored in the
     // future (internally, it is wrapped using std::make_exception_ptr):
-    future<> f1 = make_exception_future<>(3);
+    seastar::future<> f1 = make_exception_future<>(3);
     BOOST_REQUIRE(f1.failed());
     BOOST_REQUIRE_THROW(f1.get(), int);
-    future<> f2 = make_exception_future<>(std::runtime_error("hello"));
+    seastar::future<> f2 = make_exception_future<>(std::runtime_error("hello"));
     BOOST_REQUIRE(f2.failed());
     BOOST_REQUIRE_THROW(f2.get(), std::runtime_error);
     // However, if make_exception_future() is given an std::exception_ptr
@@ -2203,18 +2202,18 @@ SEASTAR_TEST_CASE(test_make_exception_future) {
     // the one held in the given exception_ptr - not the exception_ptr object
     // itself.
     std::exception_ptr e3 = std::make_exception_ptr(3);
-    future<> f3 = make_exception_future<>(e3);
+    seastar::future<> f3 = make_exception_future<>(e3);
     BOOST_REQUIRE(f3.failed());
     BOOST_REQUIRE_THROW(f3.get(), int); // expecting int, not std::exception_ptr
     // If make_exception_future() is given an std::exception_ptr by rvalue,
     // it should also work correctly:
     // An unnamed rvalue:
-    future<> f4 = make_exception_future<>(std::make_exception_ptr(3));
+    seastar::future<> f4 = make_exception_future<>(std::make_exception_ptr(3));
     BOOST_REQUIRE(f4.failed());
     BOOST_REQUIRE_THROW(f4.get(), int); // expecting int, not std::exception_ptr
     // A rvalue reference (a move):
     std::exception_ptr e5 = std::make_exception_ptr(3);
-    future<> f5 = make_exception_future<>(std::move(e5)); // note std::move()
+    seastar::future<> f5 = make_exception_future<>(std::move(e5)); // note std::move()
     BOOST_REQUIRE(f5.failed());
     BOOST_REQUIRE_THROW(f5.get(), int); // expecting int, not std::exception_ptr
     // A rvalue reference to a *const* exception_ptr:
@@ -2225,28 +2224,28 @@ SEASTAR_TEST_CASE(test_make_exception_future) {
     // it will simply fall back to a copy instead of a move. And a copy does
     // work (without std::move(), it works).
     const std::exception_ptr e6 = std::make_exception_ptr(3); // note const!
-    future<> f6 = make_exception_future<>(std::move(e6)); // note std::move()
+    seastar::future<> f6 = make_exception_future<>(std::move(e6)); // note std::move()
     BOOST_REQUIRE(f6.failed());
     BOOST_REQUIRE_THROW(f6.get(), int); // expecting int, not std::exception_ptr
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 // Reproduce use-after-free similar to #1514
 SEASTAR_TEST_CASE(test_run_in_background) {
-    engine().run_in_background([] {
+    seastar::engine().run_in_background([] {
         return sleep(1ms).then([] {
             return smp::invoke_on_all([] {
                 return sleep(1ms);
             });
         });
     });
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_THREAD_TEST_CASE(test_manual_clock_advance) {
     bool expired = false;
-    auto t = timer<manual_clock>([&] {
+    auto t = seastar::timer<manual_clock>([&] {
         expired = true;
     });
     t.arm(2ms);
@@ -2262,8 +2261,8 @@ SEASTAR_THREAD_TEST_CASE(test_ready_future_across_shards) {
         return;
     }
 
-    auto other_shard = (this_shard_id() + 1) % smp::count;
-    auto f1 = make_ready_future<int>(42);
+    auto other_shard = (seastar::this_shard_id() + 1) % smp::count;
+    auto f1 = seastar::make_ready_future<int>(42);
     smp::submit_to(other_shard, [f1 = std::move(f1)] () mutable {
         BOOST_REQUIRE_EQUAL(f1.get(), 42);
     }).get();
@@ -2275,13 +2274,13 @@ SEASTAR_THREAD_TEST_CASE(test_foreign_promise_set_value) {
         return;
     }
 
-    promise<int> pr;
-    auto other_shard = (this_shard_id() + 1) % smp::count;
+    seastar::promise<int> pr;
+    auto other_shard = (seastar::this_shard_id() + 1) % smp::count;
 
     auto getter = pr.get_future();
 
     auto setter = smp::submit_to(other_shard, [&] {
-        pr.set_value(this_shard_id());
+        pr.set_value(seastar::this_shard_id());
     });
 
     setter.get();

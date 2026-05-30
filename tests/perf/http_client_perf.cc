@@ -30,7 +30,7 @@
  * CRLF and then responds back with the "HTTP/1.1 200 OK host: test" line. So it's not
  * http::server instance, but a lightweight mock.
  *
- * The connection is net::connected_socket wrapper over seastar::queue, not Linux socket.
+ * The connection is seastar::net::connected_socket wrapper over seastar::queue, not Linux socket.
  */
 
 #include <seastar/core/seastar.hh>
@@ -46,7 +46,6 @@
 #include <fmt/printf.h>
 #include <string>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 class server {
@@ -54,18 +53,18 @@ class server {
     seastar::connected_socket _cs;
     seastar::input_stream<char> _in;
     seastar::output_stream<char> _out;
-    sstring _req;
+    seastar::sstring _req;
 
-    future<> run_serve_loop() {
+    seastar::future<> run_serve_loop() {
         while (true) {
             temporary_buffer<char> buf = co_await _in.read();
             if (buf.empty()) {
                 co_return;
             }
 
-            _req += sstring(buf.get(), buf.size());
+            _req += seastar::sstring(buf.get(), buf.size());
             if (_req.ends_with("\r\n\r\n")) {
-                sstring r200("HTTP/1.1 200 OK\r\nHost: test\r\n\r\n");
+                seastar::sstring r200("HTTP/1.1 200 OK\r\nHost: test\r\n\r\n");
                 co_await _out.write(r200);
                 co_await _out.flush();
                 _req = "";
@@ -75,13 +74,13 @@ class server {
 
 public:
     server(loopback_connection_factory& lcf) : _ss(lcf.get_server_socket()) {}
-    future<> serve() {
+    seastar::future<> serve() {
         return _ss.accept().then([this] (seastar::accept_result ar) {
             _cs = std::move(ar.connection);
             _in = _cs.input();
             _out = _cs.output();
             return run_serve_loop().finally([this] {
-                return when_all(_in.close(), _out.close()).discard_result();
+                return seastar::when_all(_in.close(), _out.close()).discard_result();
             });
         });
     }
@@ -91,8 +90,8 @@ class loopback_http_factory : public http::experimental::connection_factory {
     loopback_socket_impl lsi;
 public:
     explicit loopback_http_factory(loopback_connection_factory& f) : lsi(f) {}
-    virtual future<connected_socket> make(abort_source* as) override {
-        return lsi.connect(socket_address(ipv4_addr()), socket_address(ipv4_addr()));
+    virtual seastar::future<seastar::connected_socket> make(seastar::abort_source* as) override {
+        return lsi.connect(seastar::socket_address(ipv4_addr()), seastar::socket_address(ipv4_addr()));
     }
 };
 
@@ -115,17 +114,17 @@ class client {
         return stats {
             .ts = std::chrono::steady_clock::now(),
             .mallocs = memory::stats().mallocs(),
-            .tasks = engine().get_sched_stats().tasks_processed,
+            .tasks = seastar::engine().get_sched_stats().tasks_processed,
             .instructions = _instructions.read(),
             .cpu_cycles = _cpu_cycles.read(),
         };
     }
 
-    future<> make_requests(unsigned nr) {
+    seastar::future<> make_requests(unsigned nr) {
         for (unsigned i = 0; i < nr; i++) {
             auto req = http::request::make("GET", "test", "/test");
             co_await _cln.make_request(std::move(req), [] (const http::reply& rep, input_stream<char>&& in) {
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             }, http::reply::status_type::ok);
         }
     }
@@ -137,7 +136,7 @@ public:
             , _instructions(linux_perf_event::user_instructions_retired())
             , _cpu_cycles(linux_perf_event::user_cpu_cycles_retired())
     {}
-    future<> work() {
+    seastar::future<> work() {
         fmt::print("Warming up with {} requests\n", _warmup_limit);
         return make_requests(_warmup_limit).then([this] {
             fmt::print("Warmup finished, making {} requests\n", _limit);
@@ -163,7 +162,7 @@ public:
 };
 
 int main(int ac, char** av) {
-    app_template at;
+    seastar::app_template at;
     namespace bpo = boost::program_options;
     at.add_options()
             ("total-ops", bpo::value<unsigned>()->default_value(1000000), "Total requests to make")
@@ -176,7 +175,7 @@ int main(int ac, char** av) {
             loopback_connection_factory lcf(1);
             server srv(lcf);
             client cln(lcf, total_ops, warmup_ops);
-            when_all(srv.serve(), cln.work()).discard_result().get();
+            seastar::when_all(srv.serve(), cln.work()).discard_result().get();
         });
     });
 }

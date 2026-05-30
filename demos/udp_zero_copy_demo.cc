@@ -32,7 +32,6 @@
 #include <iomanip>
 #include <iostream>
 
-using namespace seastar;
 using namespace net;
 using namespace std::chrono_literals;
 namespace bpo = boost::program_options;
@@ -45,14 +44,14 @@ typename Duration::rep to_seconds(Duration d) {
 class server {
 private:
     udp_channel _chan;
-    timer<> _stats_timer;
+    seastar::timer<> _stats_timer;
     uint64_t _n_sent {};
     size_t _chunk_size;
     bool _copy;
     std::vector<packet> _packets;
     std::unique_ptr<output_stream<char>> _out;
     steady_clock_type::time_point _last;
-    sstring _key;
+    seastar::sstring _key;
     size_t _packet_size = 8*KB;
     char* _mem;
     size_t _mem_size;
@@ -67,7 +66,7 @@ public:
     server()
         : _rnd(std::random_device()()) {
     }
-    future<> send(ipv4_addr dst, packet p) {
+    seastar::future<> send(ipv4_addr dst, packet p) {
         return _chan.send(dst, std::move(p)).then([this] {
             _n_sent++;
         });
@@ -92,7 +91,7 @@ public:
 
         _chunk_size = chunk_size;
         _copy = copy;
-        _key = sstring(new char[64], 64);
+        _key = seastar::sstring(new char[64], 64);
 
         _out = std::make_unique<output_stream<char>>(
             data_sink(std::make_unique<vector_data_sink>(_packets)), _packet_size);
@@ -108,7 +107,7 @@ public:
         (void)keep_doing([this] {
             return _chan.receive().then([this] (datagram dgram) {
                 auto chunk = next_chunk();
-                lw_shared_ptr<sstring> item;
+                seastar::lw_shared_ptr<seastar::sstring> item;
                 if (_copy) {
                     _packets.clear();
                     // FIXME: future is discarded
@@ -136,7 +135,7 @@ public:
 
 int main(int ac, char ** av) {
     server s;
-    app_template app;
+    seastar::app_template app;
     app.add_options()
         ("chunk-size", bpo::value<int>()->default_value(1024),
              "Chunk size")

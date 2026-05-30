@@ -30,12 +30,11 @@
 #include <seastar/util/defer.hh>
 #include <seastar/util/later.hh>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_TEST_CASE(test_abort_source_notifies_subscriber) {
     bool signalled = false;
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     auto st_opt = as.subscribe([&signalled] () noexcept {
         signalled = true;
     });
@@ -44,12 +43,12 @@ SEASTAR_TEST_CASE(test_abort_source_notifies_subscriber) {
     BOOST_REQUIRE_EQUAL(true, signalled);
     BOOST_REQUIRE_EQUAL(false, bool(st_opt));
     BOOST_REQUIRE_THROW(as.check(), abort_requested_exception);
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_abort_source_subscription_unregister) {
     bool signalled = false;
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     auto st_opt = as.subscribe([&signalled] () noexcept {
         signalled = true;
     });
@@ -57,19 +56,19 @@ SEASTAR_TEST_CASE(test_abort_source_subscription_unregister) {
     st_opt = { };
     as.request_abort();
     BOOST_REQUIRE_EQUAL(false, signalled);
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_abort_source_rejects_subscription) {
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     as.request_abort();
     auto st_opt = as.subscribe([] () noexcept { });
     BOOST_REQUIRE_EQUAL(false, bool(st_opt));
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_sleep_abortable) {
-    auto as = std::make_unique<abort_source>();
+    auto as = std::make_unique<seastar::abort_source>();
     auto f = sleep_abortable(100s, *as).then_wrapped([] (auto&& f) {
         try {
             f.get();
@@ -85,7 +84,7 @@ SEASTAR_TEST_CASE(test_sleep_abortable) {
 }
 
 SEASTAR_TEST_CASE(test_sleep_abortable_no_abort) {
-    auto as = std::make_unique<abort_source>();
+    auto as = std::make_unique<seastar::abort_source>();
 
     // Check that the sleep completes as usual if the
     // abort source doesn't fire.
@@ -101,19 +100,19 @@ SEASTAR_TEST_CASE(test_sleep_abortable_no_abort) {
 // Verify that negative sleep does not sleep forever. It should not sleep
 // at all.
 SEASTAR_TEST_CASE(test_negative_sleep_abortable) {
-    return do_with(abort_source(), [] (abort_source& as) {
+    return seastar::do_with(seastar::abort_source(), [] (seastar::abort_source& as) {
         return sleep_abortable(-10s, as);
     });
 }
 
 SEASTAR_TEST_CASE(test_request_abort_with_exception) {
-    abort_source as;
-    optimized_optional<abort_source::subscription> st_opt;
+    seastar::abort_source as;
+    optimized_optional<seastar::abort_source::subscription> st_opt;
     std::optional<std::exception_ptr> aborted_ex;
     auto expected_message = "expected";
 
     auto make_abort_source = [&] () {
-        as = abort_source();
+        as = seastar::abort_source();
         st_opt = as.subscribe([&aborted_ex] (const std::optional<std::exception_ptr>& opt_ex) noexcept {
             aborted_ex = opt_ex;
         });
@@ -161,11 +160,11 @@ SEASTAR_TEST_CASE(test_request_abort_with_exception) {
     BOOST_REQUIRE(caught_exception);
     BOOST_REQUIRE_THROW(as.check(), std::runtime_error);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_THREAD_TEST_CASE(test_sleep_abortable_with_exception) {
-    abort_source as;
+    seastar::abort_source as;
     auto f = sleep_abortable(10s, as);
     auto expected_message = "expected";
     as.request_abort_ex(std::runtime_error(expected_message));
@@ -181,11 +180,11 @@ SEASTAR_THREAD_TEST_CASE(test_sleep_abortable_with_exception) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_destroy_with_moved_subscriptions) {
-    auto as = std::make_unique<abort_source>();
+    auto as = std::make_unique<seastar::abort_source>();
     int aborted = 0;
     auto sub1 = as->subscribe([&] () noexcept { ++aborted; });
     auto sub2 = std::move(sub1);
-    optimized_optional<abort_source::subscription> sub3;
+    optimized_optional<seastar::abort_source::subscription> sub3;
     sub3 = std::move(sub2);
     auto sub4 = as->subscribe([&] () noexcept { ++aborted; });
     sub4 = std::move(sub3);
@@ -194,7 +193,7 @@ SEASTAR_THREAD_TEST_CASE(test_destroy_with_moved_subscriptions) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_request_abort_twice) {
-    abort_source as;
+    seastar::abort_source as;
     as.request_abort_ex(std::runtime_error(""));
     as.request_abort();
     BOOST_REQUIRE_THROW(as.check(), std::runtime_error);
@@ -202,7 +201,7 @@ SEASTAR_THREAD_TEST_CASE(test_request_abort_twice) {
 
 SEASTAR_THREAD_TEST_CASE(test_on_abort_call_after_abort) {
     std::exception_ptr signalled_ex;
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     auto sub = as.subscribe([&] (const std::optional<std::exception_ptr>& ex) noexcept {
         BOOST_REQUIRE(!signalled_ex);
         signalled_ex = *ex;
@@ -224,7 +223,7 @@ SEASTAR_THREAD_TEST_CASE(test_on_abort_call_after_abort) {
 
 SEASTAR_THREAD_TEST_CASE(test_on_abort_call_before_abort) {
     std::exception_ptr signalled_ex;
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     auto sub = as.subscribe([&] (const std::optional<std::exception_ptr>& ex) noexcept {
         BOOST_REQUIRE(!signalled_ex);
         signalled_ex = *ex;
@@ -246,7 +245,7 @@ SEASTAR_THREAD_TEST_CASE(test_on_abort_call_before_abort) {
 
 SEASTAR_THREAD_TEST_CASE(test_subscribe_aborted_source) {
     std::exception_ptr signalled_ex;
-    auto as = abort_source();
+    auto as = seastar::abort_source();
     as.request_abort();
     auto sub = as.subscribe([&] (const std::optional<std::exception_ptr>& ex) noexcept {
         BOOST_REQUIRE(!signalled_ex);
@@ -254,12 +253,12 @@ SEASTAR_THREAD_TEST_CASE(test_subscribe_aborted_source) {
     });
 
     // subscription is expected to evaluate to false
-    // if abort_source was already aborted
+    // if seastar::abort_source was already aborted
     BOOST_REQUIRE_EQUAL(bool(sub), false);
     BOOST_REQUIRE(signalled_ex == nullptr);
 
     // on_abort should trigger the subscribed callback
-    // if abort_source was already aborted
+    // if seastar::abort_source was already aborted
     sub->on_abort(std::make_exception_ptr(std::runtime_error("signaled")));
     BOOST_REQUIRE(signalled_ex != nullptr);
     BOOST_REQUIRE_THROW(std::rethrow_exception(signalled_ex), std::runtime_error);
@@ -276,8 +275,8 @@ SEASTAR_THREAD_TEST_CASE(test_subscription_callback_lifetime) {
     bool callback_destroyed = false;
     int callback_called = 0;
     auto when_destroyed = deferred_action([&callback_destroyed] () noexcept { callback_destroyed = true; });
-    auto as = abort_source();
-    auto sub = std::make_unique<optimized_optional<abort_source::subscription>>(as.subscribe([&, when_destroyed = std::move(when_destroyed)] (const std::optional<std::exception_ptr>& ex) noexcept {
+    auto as = seastar::abort_source();
+    auto sub = std::make_unique<optimized_optional<seastar::abort_source::subscription>>(as.subscribe([&, when_destroyed = std::move(when_destroyed)] (const std::optional<std::exception_ptr>& ex) noexcept {
         callback_called++;
     }));
     BOOST_REQUIRE_EQUAL(bool(sub), true);
@@ -305,17 +304,17 @@ SEASTAR_THREAD_TEST_CASE(test_abort_on_expiry) {
     auto abort = abort_on_expiry<manual_clock>(manual_clock::now() + 1s);
     std::exception_ptr ex;
     int called = 0;
-    auto sub = abort.abort_source().subscribe([&] (const std::optional<std::exception_ptr>& ex_opt) noexcept {
+    auto sub = abort.seastar::abort_source().subscribe([&] (const std::optional<std::exception_ptr>& ex_opt) noexcept {
         called++;
         if (ex_opt) {
             ex = *ex_opt;
         }
     });
-    BOOST_REQUIRE(!abort.abort_source().abort_requested());
+    BOOST_REQUIRE(!abort.seastar::abort_source().abort_requested());
     BOOST_REQUIRE(!called);
     manual_clock::advance(1s);
     yield().get();
-    BOOST_REQUIRE(abort.abort_source().abort_requested());
+    BOOST_REQUIRE(abort.seastar::abort_source().abort_requested());
     BOOST_REQUIRE_EQUAL(called, 1);
     BOOST_REQUIRE(ex != nullptr);
     BOOST_REQUIRE_THROW(std::rethrow_exception(ex), timed_out_error);

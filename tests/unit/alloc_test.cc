@@ -37,7 +37,6 @@
 
 #include <malloc.h>
 
-using namespace seastar;
 
 SEASTAR_TEST_CASE(alloc_almost_all_and_realloc_it_with_a_smaller_size) {
 #ifndef SEASTAR_DEFAULT_ALLOCATOR
@@ -56,7 +55,7 @@ SEASTAR_TEST_CASE(alloc_almost_all_and_realloc_it_with_a_smaller_size) {
     BOOST_REQUIRE(obj == obj2);
     free(obj2);
 #endif
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(malloc_0_and_free_it) {
@@ -65,7 +64,7 @@ SEASTAR_TEST_CASE(malloc_0_and_free_it) {
     BOOST_REQUIRE(obj != nullptr);
     free(obj);
 #endif
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(new_0) {
@@ -84,7 +83,7 @@ SEASTAR_TEST_CASE(new_0) {
         delete [] obj;
     }
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_live_objects_counter_with_cross_cpu_free) {
@@ -110,7 +109,7 @@ SEASTAR_TEST_CASE(test_aligned_alloc) {
             free(p);
         }
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 #ifdef __cpp_sized_deallocation
@@ -126,7 +125,7 @@ SEASTAR_TEST_CASE(test_sized_delete) {
         operator delete(p0, size);
         operator delete(p1, size);
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 #endif
 
@@ -140,7 +139,7 @@ SEASTAR_TEST_CASE(test_temporary_buffer_aligned) {
             ::memset(p, 0, size);
         }
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_memory_diagnostics) {
@@ -154,7 +153,7 @@ SEASTAR_TEST_CASE(test_memory_diagnostics) {
     // useful while debugging diagnostics
     // fmt::print("--------------------\n{}--------------------", report);
 #endif
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_THREAD_TEST_CASE(test_cross_thread_realloc) {
@@ -167,7 +166,7 @@ SEASTAR_THREAD_TEST_CASE(test_cross_thread_realloc) {
         BOOST_TEST_CONTEXT("cross_shard=" << cross_shard << ", initial="
                 << initial_size << ", realloc_size=" << realloc_size) {
 
-            auto other_shard = (this_shard_id() + cross_shard) % smp::count;
+            auto other_shard = (seastar::this_shard_id() + cross_shard) % smp::count;
 
             char *p = static_cast<char *>(malloc(initial_size));
 
@@ -268,7 +267,7 @@ SEASTAR_TEST_CASE(test_foreign_function_use_glibc_malloc) {
         return realloc(p, 1000);
     });
     test_allocation_function([]() { return aligned_alloc(4, 1024); });
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 // So the compiler won't optimize the call to realloc(nullptr, size)
@@ -287,7 +286,7 @@ SEASTAR_TEST_CASE(test_realloc_nullptr) {
     free(p0);
     free(p1);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_enable_abort_on_oom) {
@@ -301,7 +300,7 @@ SEASTAR_TEST_CASE(test_enable_abort_on_oom) {
 
     seastar::memory::set_abort_on_allocation_failure(original);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 void * volatile sink;
@@ -347,7 +346,7 @@ SEASTAR_TEST_CASE(test_bad_alloc_throws) {
     BOOST_CHECK_EQUAL(failed_allocs(), 1);
     free(p2 ?: p);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_diagnostics_failures) {
@@ -680,5 +679,5 @@ SEASTAR_TEST_CASE(test_large_allocation_warning_off_by_one) {
 
     free(obj);
 #endif
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }

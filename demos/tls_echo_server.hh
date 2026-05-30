@@ -29,66 +29,65 @@
 #include <seastar/util/log.hh>
 #include <iostream>
 
-using namespace seastar;
 
 struct streams {
-    connected_socket s;
+    seastar::connected_socket s;
     input_stream<char> in;
     output_stream<char> out;
 
-    streams(connected_socket cs) : s(std::move(cs)), in(s.input()), out(s.output())
+    streams(seastar::connected_socket cs) : s(std::move(cs)), in(s.input()), out(s.output())
     {}
 };
 
 class echoserver {
     server_socket _socket;
-    shared_ptr<tls::server_credentials> _certs;
+    shared_ptr<seastar::tls::server_credentials> _certs;
     seastar::gate _gate;
     bool _stopped = false;
     bool _verbose = false;
 public:
     echoserver(bool verbose = false)
-            : _certs(make_shared<tls::server_credentials>(make_shared<tls::dh_params>()))
+            : _certs(make_shared<seastar::tls::server_credentials>(make_shared<seastar::tls::dh_params>()))
             , _verbose(verbose)
     {}
 
-    future<> listen(socket_address addr, sstring crtfile, sstring keyfile, tls::client_auth ca = tls::client_auth::NONE) {
+    seastar::future<> listen(seastar::socket_address addr, seastar::sstring crtfile, seastar::sstring keyfile, seastar::tls::client_auth ca = seastar::tls::client_auth::NONE) {
         _certs->set_client_auth(ca);
-        return _certs->set_x509_key_file(crtfile, keyfile, tls::x509_crt_format::PEM).then([this, addr] {
-            ::listen_options opts;
+        return _certs->set_x509_key_file(crtfile, keyfile, seastar::tls::x509_crt_format::PEM).then([this, addr] {
+            ::seastar::listen_options opts;
             opts.reuse_address = true;
 
-            _socket = tls::listen(_certs, addr, opts);
+            _socket = seastar::tls::listen(_certs, addr, opts);
 
             // Listen in background.
-            (void)repeat([this] {
+            (void)seastar::repeat([this] {
                 if (_stopped) {
-                    return make_ready_future<stop_iteration>(stop_iteration::yes);
+                    return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
                 }
-                return with_gate(_gate, [this] {
-                    return _socket.accept().then([this](accept_result ar) {
-                        ::connected_socket s = std::move(ar.connection);
-                        socket_address a = std::move(ar.remote_address);
+                return seastar::with_gate(_gate, [this] {
+                    return _socket.accept().then([this](seastar::accept_result ar) {
+                        ::seastar::connected_socket s = std::move(ar.connection);
+                        seastar::socket_address a = std::move(ar.remote_address);
                         if (_verbose) {
                             std::cout << "Got connection from "<< a << std::endl;
                         }
-                        auto strms = make_lw_shared<streams>(std::move(s));
-                        return repeat([strms, this]() {
+                        auto strms = seastar::make_lw_shared<streams>(std::move(s));
+                        return seastar::repeat([strms, this]() {
                             return strms->in.read().then([this, strms](temporary_buffer<char> buf) {
                                 if (buf.empty()) {
                                     if (_verbose) {
                                         std::cout << "EOM" << std::endl;
                                     }
-                                    return make_ready_future<stop_iteration>(stop_iteration::yes);
+                                    return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
                                 }
-                                sstring tmp(buf.begin(), buf.end());
+                                seastar::sstring tmp(buf.begin(), buf.end());
                                 if (_verbose) {
                                     std::cout << "Read " << tmp.size() << "B" << std::endl;
                                 }
                                 return strms->out.write(tmp).then([strms]() {
                                     return strms->out.flush();
                                 }).then([] {
-                                    return make_ready_future<stop_iteration>(stop_iteration::no);
+                                    return seastar::make_ready_future<stop_iteration>(stop_iteration::no);
                                 });
                             });
                         }).then([strms]{
@@ -105,7 +104,7 @@ public:
                             std::cerr << "Error: " << ep << std::endl;
                         }
                     }).then([this] {
-                        return make_ready_future<stop_iteration>(_stopped ? stop_iteration::yes : stop_iteration::no);
+                        return seastar::make_ready_future<stop_iteration>(_stopped ? stop_iteration::yes : stop_iteration::no);
                     });
                 });
             });
@@ -113,7 +112,7 @@ public:
         });
     }
 
-    future<> stop() {
+    seastar::future<> stop() {
         _stopped = true;
         _socket.abort_accept();
         return _gate.close();

@@ -24,12 +24,11 @@
 #include <boost/test/unit_test.hpp>
 #include <seastar/util/defer.hh>
 
-using namespace seastar;
 
 BOOST_AUTO_TEST_CASE(test_defer_does_not_run_when_canceled) {
     bool ran = false;
     {
-        auto d = defer([&] () noexcept {
+        auto d = seastar::defer([&] () noexcept {
             ran = true;
         });
         d.cancel();
@@ -40,7 +39,7 @@ BOOST_AUTO_TEST_CASE(test_defer_does_not_run_when_canceled) {
 BOOST_AUTO_TEST_CASE(test_defer_runs) {
     bool ran = false;
     {
-        auto d = defer([&] () noexcept {
+        auto d = seastar::defer([&] () noexcept {
             ran = true;
         });
     }
@@ -50,7 +49,7 @@ BOOST_AUTO_TEST_CASE(test_defer_runs) {
 BOOST_AUTO_TEST_CASE(test_defer_runs_once_when_moved) {
     int ran = 0;
     {
-        auto d = defer([&] () noexcept {
+        auto d = seastar::defer([&] () noexcept {
             ++ran;
         });
         {
@@ -64,7 +63,7 @@ BOOST_AUTO_TEST_CASE(test_defer_runs_once_when_moved) {
 BOOST_AUTO_TEST_CASE(test_defer_does_not_run_when_moved_after_cancelled) {
     int ran = 0;
     {
-        auto d = defer([&] () noexcept {
+        auto d = seastar::defer([&] () noexcept {
             ++ran;
         });
         d.cancel();

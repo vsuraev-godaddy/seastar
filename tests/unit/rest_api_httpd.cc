@@ -38,7 +38,6 @@
 
 namespace bpo = boost::program_options;
 
-using namespace seastar;
 using namespace httpd;
 using namespace api_json::ns_hello_world;
 
@@ -70,7 +69,7 @@ void set_routes(routes& r) {
 }
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
 
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "HTTP Server port");
 
@@ -83,7 +82,7 @@ int main(int ac, char** av) {
             auto rb = make_shared<api_registry_builder>("apps/httpd/");
             server->start().get();
 
-            auto stop_server = defer([&] () noexcept {
+            auto stop_server = seastar::defer([&] () noexcept {
                 std::cout << "Stopping HTTP server" << std::endl; // This can throw, but won't.
                 server->stop().get();
             });

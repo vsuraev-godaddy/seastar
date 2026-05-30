@@ -26,12 +26,11 @@
 #include <seastar/core/reactor.hh>
 #include <fmt/printf.h>
 
-using namespace seastar;
 using namespace net;
 
 struct tcp_test {
     ipv4& inet;
-    using tcp = net::tcp<ipv4_traits>;
+    using tcp = seastar::net::tcp<ipv4_traits>;
     tcp::listener _listener;
     struct connection {
         tcp::connection tcp_conn;
@@ -68,8 +67,8 @@ int main(int ac, char** av) {
     ipv4 inet(&netif);
     inet.set_host_address(ipv4_address("192.168.122.2"));
     tcp_test tt(inet);
-    (void)engine().when_started().then([&tt] { tt.run(); });
-    engine().run();
+    (void)seastar::engine().when_started().then([&tt] { tt.run(); });
+    seastar::engine().run();
 }
 
 

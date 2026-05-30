@@ -28,7 +28,6 @@
 #include <sstream>
 #include <type_traits>
 
-using namespace seastar;
 
 BOOST_AUTO_TEST_CASE(map) {
     const auto pairs = tuple_map(std::make_tuple(10, 5.5, true), [](auto&& e) { return std::make_tuple(e, e); });

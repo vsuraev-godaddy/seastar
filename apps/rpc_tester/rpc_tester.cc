@@ -45,7 +45,6 @@
 #include <seastar/rpc/rpc.hh>
 #include <seastar/util/assert.hh>
 
-using namespace seastar;
 using namespace boost::accumulators;
 using namespace std::chrono_literals;
 
@@ -89,15 +88,15 @@ template <typename Input>
 inline double read(serializer, Input& input, rpc::type<double>) { return read_arithmetic_type<double>(input); }
 
 template <typename Output>
-inline void write(serializer, Output& out, const sstring& v) {
+inline void write(serializer, Output& out, const seastar::sstring& v) {
     write_arithmetic_type(out, uint32_t(v.size()));
     out.write(v.c_str(), v.size());
 }
 
 template <typename Input>
-inline sstring read(serializer, Input& in, rpc::type<sstring>) {
+inline seastar::sstring read(serializer, Input& in, rpc::type<seastar::sstring>) {
     auto size = read_arithmetic_type<uint32_t>(in);
-    sstring ret = uninitialized_string(size);
+    seastar::sstring ret = uninitialized_string(size);
     in.read(ret.data(), size);
     return ret;
 }
@@ -360,7 +359,7 @@ static std::array<double, 4> quantiles = { 0.5, 0.95, 0.99, 0.999};
 class job {
 public:
     virtual std::string name() const = 0;
-    virtual future<> run() = 0;
+    virtual seastar::future<> run() = 0;
     virtual void emit_result(YAML::Emitter& out) const = 0;
     virtual ~job() {}
 };
@@ -369,16 +368,16 @@ class job_rpc : public job {
     using accumulator_type = accumulator_set<double, stats<tag::extended_p_square_quantile(quadratic), tag::mean, tag::max>>;
 
     job_config _cfg;
-    socket_address _caddr;
+    seastar::socket_address _caddr;
     client_config _ccfg;
     rpc_protocol& _rpc;
     std::unique_ptr<rpc_protocol::client> _client;
-    std::function<future<>(unsigned)> _call;
+    std::function<seastar::future<>(unsigned)> _call;
     std::chrono::steady_clock::time_point _stop;
     uint64_t _total_messages = 0;
     accumulator_type _latencies;
 
-    future<> call_echo(unsigned dummy) {
+    seastar::future<> call_echo(unsigned dummy) {
         auto cln = _rpc.make_client<uint64_t(uint64_t)>(rpc_verb::ECHO);
         if (_cfg.timeout) {
             return cln(*_client, std::chrono::duration_cast<seastar::rpc::rpc_clock_type::duration>(*_cfg.timeout), dummy).discard_result();
@@ -387,15 +386,15 @@ class job_rpc : public job {
         }
     }
 
-    future<> call_write(unsigned dummy, const payload_t& pl) {
+    seastar::future<> call_write(unsigned dummy, const payload_t& pl) {
         return _rpc.make_client<uint64_t(payload_t)>(rpc_verb::WRITE)(*_client, pl).then([exp = pl.size()] (auto res) {
             SEASTAR_ASSERT(res == exp);
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
     }
 
 public:
-    job_rpc(job_config cfg, rpc_protocol& rpc, client_config ccfg, socket_address caddr)
+    job_rpc(job_config cfg, rpc_protocol& rpc, client_config ccfg, seastar::socket_address caddr)
             : _cfg(cfg)
             , _caddr(std::move(caddr))
             , _ccfg(ccfg)
@@ -411,11 +410,11 @@ public:
             _call = [this, payload = std::move(payload)] (unsigned x) { return call_write(x, payload); };
         } else if (_cfg.verb == "vecho") {
             _call = [this] (unsigned x) {
-                fmt::print("{}.{} send echo\n", this_shard_id(), x);
+                fmt::print("{}.{} send echo\n", seastar::this_shard_id(), x);
                 return call_echo(x).then([x] {
-                        fmt::print("{}.{} got response\n", this_shard_id(), x);
+                        fmt::print("{}.{} got response\n", seastar::this_shard_id(), x);
                 }).handle_exception([x] (auto ex) {
-                        fmt::print("{}.{} got error {}\n", this_shard_id(), x, ex);
+                        fmt::print("{}.{} got error {}\n", seastar::this_shard_id(), x, ex);
                 });
             };
         } else {
@@ -425,14 +424,14 @@ public:
 
     virtual std::string name() const override { return _cfg.name; }
 
-    virtual future<> run() override {
+    virtual seastar::future<> run() override {
       return with_scheduling_group(_cfg.sg, [this] {
         rpc::client_options co;
         co.tcp_nodelay = _ccfg.nodelay;
         co.isolation_cookie = _cfg.sg_name;
         _client = std::make_unique<rpc_protocol::client>(_rpc, co, _caddr);
         return parallel_for_each(std::views::iota(0u, _cfg.parallelism), [this] (auto dummy) {
-          auto f = make_ready_future<>();
+          auto f = seastar::make_ready_future<>();
           if (_cfg.sleep_time) {
               // Do initial small delay to de-synchronize fibers
               f = seastar::sleep(std::chrono::duration_cast<std::chrono::nanoseconds>(*_cfg.sleep_time / _cfg.parallelism * dummy));
@@ -450,7 +449,7 @@ public:
                     if (_cfg.sleep_time) {
                         return seastar::sleep(std::chrono::duration_cast<std::chrono::nanoseconds>(*_cfg.sleep_time));
                     } else {
-                        return make_ready_future<>();
+                        return seastar::make_ready_future<>();
                     }
                 });
             });
@@ -512,7 +511,7 @@ public:
         out << YAML::Key << "total" << YAML::Value << _total_invocations;
     }
 
-    virtual future<> run() override {
+    virtual seastar::future<> run() override {
         _stop = std::chrono::steady_clock::now() + _cfg.duration;
         return with_scheduling_group(_cfg.sg, [this] {
           return parallel_for_each(std::views::iota(0u, _cfg.parallelism), [this] (auto dummy) {
@@ -524,7 +523,7 @@ public:
                 auto pause = _pause->get();
                 while ((std::chrono::steady_clock::now() - start) < pause);
                 if (!_sleep) {
-                    return make_ready_future<>();
+                    return seastar::make_ready_future<>();
                 } else {
                     auto sleep = std::chrono::duration_cast<std::chrono::nanoseconds>(_sleep->get());
                     return seastar::sleep(sleep);
@@ -539,13 +538,13 @@ class context {
     std::unique_ptr<rpc_protocol> _rpc;
     std::unique_ptr<rpc_protocol::server> _server;
     std::unique_ptr<rpc_protocol::client> _client;
-    promise<> _bye;
-    promise<> _server_jobs;
+    seastar::promise<> _bye;
+    seastar::promise<> _server_jobs;
     config _cfg;
     std::vector<std::unique_ptr<job>> _jobs;
     std::unordered_map<std::string, scheduling_group> _sched_groups;
 
-    std::unique_ptr<job> make_job(job_config cfg, std::optional<socket_address> caddr) {
+    std::unique_ptr<job> make_job(job_config cfg, std::optional<seastar::socket_address> caddr) {
         if (cfg.type == "rpc") {
             return std::make_unique<job_rpc>(cfg, *_rpc, _cfg.client, *caddr);
         }
@@ -556,7 +555,7 @@ class context {
         throw std::runtime_error("unknown job type");
     }
 
-    future<> run_jobs() {
+    seastar::future<> run_jobs() {
         return parallel_for_each(_jobs, [] (auto& job) {
             return job->run();
         });
@@ -571,7 +570,7 @@ class context {
     }
 
 public:
-    context(std::optional<socket_address> laddr, std::optional<socket_address> caddr, uint16_t port, config cfg, std::unordered_map<std::string, scheduling_group> groups)
+    context(std::optional<seastar::socket_address> laddr, std::optional<seastar::socket_address> caddr, uint16_t port, config cfg, std::unordered_map<std::string, scheduling_group> groups)
             : _rpc(std::make_unique<rpc_protocol>(serializer{}))
             , _cfg(cfg)
             , _sched_groups(std::move(groups))
@@ -585,17 +584,17 @@ public:
             _bye.set_value();
         });
         _rpc->register_handler(rpc_verb::ECHO, [] (uint64_t val) {
-            return make_ready_future<uint64_t>(val);
+            return seastar::make_ready_future<uint64_t>(val);
         });
         _rpc->register_handler(rpc_verb::WRITE, [] (payload_t val) {
-            return make_ready_future<uint64_t>(val.size());
+            return seastar::make_ready_future<uint64_t>(val.size());
         });
 
         if (laddr) {
             rpc::server_options so;
             so.tcp_nodelay = _cfg.server.nodelay;
             rpc::resource_limits limits;
-            limits.isolate_connection = [this] (sstring cookie) { return isolate_connection(cookie); };
+            limits.isolate_connection = [this] (seastar::sstring cookie) { return isolate_connection(cookie); };
             _server = std::make_unique<rpc_protocol::server>(*_rpc, so, *laddr, limits);
 
             for (auto&& jc : _cfg.jobs) {
@@ -618,15 +617,15 @@ public:
         }
     }
 
-    future<> start() {
+    seastar::future<> start() {
         if (_client) {
             return _rpc->make_client<void()>(rpc_verb::HELLO)(*_client);
         }
 
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 
-    future<> stop() {
+    seastar::future<> stop() {
         if (_client) {
             return _rpc->make_client<void()>(rpc_verb::BYE)(*_client).finally([this] {
                 return _client->stop();
@@ -637,22 +636,22 @@ public:
             return _server->stop();
         }
 
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 
-    future<> run() {
+    seastar::future<> run() {
         if (_client) {
             return run_jobs();
         }
 
         if (_server) {
-            return when_all(_bye.get_future(), _server_jobs.get_future()).discard_result();
+            return seastar::when_all(_bye.get_future(), _server_jobs.get_future()).discard_result();
         }
 
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 
-    future<> emit_result(YAML::Emitter& out) const {
+    seastar::future<> emit_result(YAML::Emitter& out) const {
         for (const auto& job : _jobs) {
             out << YAML::Key << job->name();
             out << YAML::BeginMap;
@@ -660,20 +659,20 @@ public:
             out << YAML::EndMap;
         }
 
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 };
 
 int main(int ac, char** av) {
     namespace bpo = boost::program_options;
 
-    app_template app;
+    seastar::app_template app;
     auto opt_add = app.add_options();
     opt_add
-        ("listen", bpo::value<sstring>()->default_value(""), "address to start server on")
-        ("connect", bpo::value<sstring>()->default_value(""), "address to connect client to")
+        ("listen", bpo::value<seastar::sstring>()->default_value(""), "address to start server on")
+        ("connect", bpo::value<seastar::sstring>()->default_value(""), "address to connect client to")
         ("port", bpo::value<int>()->default_value(9123), "port to listen on or connect to")
-        ("conf", bpo::value<sstring>()->default_value("./conf.yaml"), "config with jobs and options")
+        ("conf", bpo::value<seastar::sstring>()->default_value("./conf.yaml"), "config with jobs and options")
         ("duration", bpo::value<unsigned>()->default_value(30), "duration in seconds")
     ;
 
@@ -681,13 +680,13 @@ int main(int ac, char** av) {
     return app.run(ac, av, [&] {
         return seastar::async([&] {
             auto& opts = app.configuration();
-            auto& listen = opts["listen"].as<sstring>();
-            auto& connect = opts["connect"].as<sstring>();
+            auto& listen = opts["listen"].as<seastar::sstring>();
+            auto& connect = opts["connect"].as<seastar::sstring>();
             auto& port = opts["port"].as<int>();
-            auto& conf = opts["conf"].as<sstring>();
+            auto& conf = opts["conf"].as<seastar::sstring>();
             auto duration = std::chrono::seconds(opts["duration"].as<unsigned>());
 
-            std::optional<socket_address> laddr;
+            std::optional<seastar::socket_address> laddr;
             if (listen != "") {
                 if (listen[0] == '.' || listen[0] == '/') {
                     unix_domain_addr addr(listen);
@@ -697,7 +696,7 @@ int main(int ac, char** av) {
                     laddr.emplace(std::move(addr));
                 }
             }
-            std::optional<socket_address> caddr;
+            std::optional<seastar::socket_address> caddr;
             if (connect != "") {
                 if (connect[0] == '.' || connect[0] == '/') {
                     unix_domain_addr addr(connect);

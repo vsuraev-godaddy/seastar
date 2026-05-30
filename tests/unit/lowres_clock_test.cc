@@ -33,13 +33,12 @@
 #include <chrono>
 #include <thread>
 
-using namespace seastar;
 
 //
 // Sanity check the accuracy of the steady low-resolution clock.
 //
 SEASTAR_TEST_CASE(steady_clock_sanity) {
-    return do_with(lowres_clock::now(), [](auto &&t1) {
+    return seastar::do_with(lowres_clock::now(), [](auto &&t1) {
         static constexpr auto sleep_duration = std::chrono::milliseconds(100);
 
         return ::seastar::sleep(sleep_duration).then([&t1] {
@@ -48,7 +47,7 @@ SEASTAR_TEST_CASE(steady_clock_sanity) {
 
             BOOST_REQUIRE(elapsed >= minimum_elapsed);
 
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
     });
 }
@@ -108,11 +107,11 @@ SEASTAR_TEST_CASE(system_clock_sanity) {
     // make the low-resolution clock and the high-resolution clock disagree on the current second.
     //
 
-    return do_with(0ul, 0ul, [](std::size_t& index, std::size_t& success_count) {
-        return repeat([&index, &success_count] {
+    return seastar::do_with(0ul, 0ul, [](std::size_t& index, std::size_t& success_count) {
+        return seastar::repeat([&index, &success_count] {
             if (index >= 3) {
                 BOOST_REQUIRE_GE(success_count, 2u);
-                return make_ready_future<stop_iteration>(stop_iteration::yes);
+                return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
             }
 
             return ::seastar::sleep(std::chrono::milliseconds(10)).then([&index, &success_count] {
@@ -131,12 +130,12 @@ SEASTAR_TEST_CASE(system_clock_sanity) {
 // Verify that the low-resolution clock updates its reported time point over time.
 //
 SEASTAR_TEST_CASE(system_clock_dynamic) {
-    return do_with(lowres_system_clock::now(), [](auto &&t1) {
+    return seastar::do_with(lowres_system_clock::now(), [](auto &&t1) {
         return seastar::sleep(std::chrono::milliseconds(100)).then([&t1] {
             auto const t2 = lowres_system_clock::now();
             BOOST_REQUIRE_NE(t1.time_since_epoch().count(), t2.time_since_epoch().count());
 
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
     });
 }

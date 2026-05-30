@@ -25,7 +25,6 @@
 #include <seastar/testing/test_case.hh>
 #include <seastar/util/shared_token_bucket.hh>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_TEST_CASE(test_basic_non_capped_loop) {
@@ -45,7 +44,7 @@ SEASTAR_TEST_CASE(test_basic_non_capped_loop) {
     tb.replenish(manual_clock::now());
     BOOST_REQUIRE(tb.deficiency(th) == 0);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_basic_capped_loop) {
@@ -69,5 +68,5 @@ SEASTAR_TEST_CASE(test_basic_capped_loop) {
     tb.replenish(manual_clock::now());
     BOOST_REQUIRE(tb.deficiency(th) == 0);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }

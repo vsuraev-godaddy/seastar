@@ -25,7 +25,6 @@
 
 #include <seastar/core/pipe.hh>
 
-using namespace seastar;
 
 static_assert(!std::is_default_constructible_v<seastar::pipe_reader<int>>);
 static_assert(!std::is_default_constructible_v<seastar::pipe_writer<int>>);

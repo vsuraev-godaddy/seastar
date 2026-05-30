@@ -31,7 +31,6 @@
 #include <boost/range/algorithm/equal.hpp>
 #include <boost/range/algorithm/reverse.hpp>
 
-using namespace seastar;
 
 using cb16_t = circular_buffer_fixed_capacity<int, 16>;
 

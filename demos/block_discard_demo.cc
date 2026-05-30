@@ -28,18 +28,17 @@
 #include <seastar/util/assert.hh>
 #include <iostream>
 
-using namespace seastar;
 
 namespace bpo = boost::program_options;
 
 struct file_test {
     file_test(file&& f) : f(std::move(f)) {}
     file f;
-    semaphore sem = { 0 };
+    seastar::semaphore sem = { 0 };
 };
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
     app.add_options()
         ("dev", bpo::value<std::string>(), "e.g. --dev /dev/sdb")
         ;
@@ -49,7 +48,7 @@ int main(int ac, char** av) {
         auto&& config = app.configuration();
         auto filepath = config["dev"].as<std::string>();
 
-        return open_file_dma(filepath, open_flags::rw | open_flags::create).then([] (file f) {
+        return seastar::open_file_dma(filepath, seastar::open_flags::rw | seastar::open_flags::create).then([] (file f) {
             auto ft = new file_test{std::move(f)};
 
             // Discard asynchronously, siganl when done.
@@ -68,7 +67,7 @@ int main(int ac, char** av) {
             }).then([ft] () mutable {
                 std::cout << "done\n";
                 delete ft;
-                engine().exit(0);
+                seastar::engine().exit(0);
             });
         });
     });

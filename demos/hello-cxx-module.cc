@@ -21,13 +21,12 @@
 
 import seastar;
 
-using namespace seastar;
 logger applog("app");
 
 int main(int argc, char** argv) {
     seastar::app_template app;
-    app.run(argc, argv, [] () -> future<> {
+    app.run(argc, argv, [] () -> seastar::future<> {
         applog.info("Hello world!");
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     });
 }

@@ -34,7 +34,6 @@
 
 using namespace std::chrono_literals;
 
-using namespace seastar;
 
 SEASTAR_TEST_CASE(test_create_stage_from_lvalue_function_object) {
     return seastar::async([] {
@@ -73,7 +72,7 @@ void test_simple_execution_stage(Function&& func, Verify&& verify) {
     std::uniform_int_distribution<> dist(0, 100'000);
     std::generate_n(std::back_inserter(vs), 1'000, [&] { return dist(gen); });
 
-    std::vector<future<int>> fs;
+    std::vector<seastar::future<int>> fs;
     for (auto v : vs) {
         fs.emplace_back(stage(v));
     }
@@ -91,7 +90,7 @@ SEASTAR_TEST_CASE(test_simple_stage_returning_int) {
             } else {
                 throw x;
             }
-        }, [] (int original, future<int> result) {
+        }, [] (int original, seastar::future<int> result) {
             if (original % 2) {
                 BOOST_REQUIRE_EQUAL(original * 2, result.get());
             } else {
@@ -105,11 +104,11 @@ SEASTAR_TEST_CASE(test_simple_stage_returning_future_int) {
     return seastar::async([] {
         test_simple_execution_stage([] (int x) {
             if (x % 2) {
-                return make_ready_future<int>(x * 2);
+                return seastar::make_ready_future<int>(x * 2);
             } else {
                 return make_exception_future<int>(x);
             }
-        }, [] (int original, future<int> result) {
+        }, [] (int original, seastar::future<int> result) {
             if (original % 2) {
                 BOOST_REQUIRE_EQUAL(original * 2, result.get());
             } else {
@@ -163,7 +162,7 @@ SEASTAR_TEST_CASE(test_rref_decays_to_value) {
         });
 
         std::vector<int> tmp;
-        std::vector<future<size_t>> fs;
+        std::vector<seastar::future<size_t>> fs;
         for (auto i = 0; i < 100; i++) {
             tmp.resize(i);
             fs.emplace_back(stage(std::move(tmp)));
@@ -183,7 +182,7 @@ SEASTAR_TEST_CASE(test_lref_does_not_decay) {
         });
 
         int value = 0;
-        std::vector<future<>> fs;
+        std::vector<seastar::future<>> fs;
         for (auto i = 0; i < 100; i++) {
             //fs.emplace_back(stage(value)); // should fail to compile
             fs.emplace_back(stage(seastar::ref(value)));
@@ -203,7 +202,7 @@ SEASTAR_TEST_CASE(test_explicit_reference_wrapper_is_not_unwrapped) {
         });
 
         int value = 0;
-        std::vector<future<>> fs;
+        std::vector<seastar::future<>> fs;
         for (auto i = 0; i < 100; i++) {
             //fs.emplace_back(stage(value)); // should fail to compile
             fs.emplace_back(stage(seastar::ref(value)));
@@ -228,7 +227,7 @@ SEASTAR_TEST_CASE(test_function_is_class_member) {
         auto stage = seastar::make_execution_stage("test", &foo::member);
 
         foo object;
-        std::vector<future<int>> fs;
+        std::vector<seastar::future<int>> fs;
         for (auto i = 0; i < 100; i++) {
             fs.emplace_back(stage(&object, i));
         }
@@ -262,7 +261,7 @@ SEASTAR_TEST_CASE(test_stage_stats) {
         BOOST_REQUIRE_EQUAL(stage.get_stats().function_calls_enqueued, 0u);
         BOOST_REQUIRE_EQUAL(stage.get_stats().function_calls_executed, 0u);
 
-        auto fs = std::vector<future<>>();
+        auto fs = std::vector<seastar::future<>>();
         static constexpr auto call_count = 53u;
         for (auto i = 0u; i < call_count; i++) {
             fs.emplace_back(stage());

@@ -31,16 +31,15 @@
 #include <seastar/net/dns.hh>
 #include <seastar/net/inet_address.hh>
 
-using namespace seastar;
 using namespace seastar::net;
 
-static const sstring seastar_name = "seastar.io";
+static const seastar::sstring seastar_name = "seastar.io";
 
-static future<> test_resolve(dns_resolver::options opts) {
-    auto d = ::make_lw_shared<dns_resolver>(std::move(opts));
-    return d->get_host_by_name(seastar_name, inet_address::family::INET).then([d](hostent e) {
+static seastar::future<> test_resolve(dns_resolver::options opts) {
+    auto d = ::seastar::make_lw_shared<dns_resolver>(std::move(opts));
+    return d->get_host_by_name(seastar_name, seastar::net::inet_address::family::INET).then([d](hostent e) {
         return d->get_host_by_addr(e.addr_list.front()).then([d, a = e.addr_list.front()](hostent e) {
-            return d->get_host_by_name(e.names.front(), inet_address::family::INET).then([a](hostent e) {
+            return d->get_host_by_name(e.names.front(), seastar::net::inet_address::family::INET).then([a](hostent e) {
                 BOOST_REQUIRE(std::count(e.addr_list.begin(), e.addr_list.end(), a));
             });
         });
@@ -49,9 +48,9 @@ static future<> test_resolve(dns_resolver::options opts) {
     });
 }
 
-static future<> test_bad_name(dns_resolver::options opts) {
-    auto d = ::make_lw_shared<dns_resolver>(std::move(opts));
-    return d->get_host_by_name("apa.ninja.gnu", inet_address::family::INET).then_wrapped([d](future<hostent> f) {
+static seastar::future<> test_bad_name(dns_resolver::options opts) {
+    auto d = ::seastar::make_lw_shared<dns_resolver>(std::move(opts));
+    return d->get_host_by_name("apa.ninja.gnu", seastar::net::inet_address::family::INET).then_wrapped([d](seastar::future<hostent> f) {
         try {
             f.get();
             BOOST_FAIL("should not succeed");
@@ -78,12 +77,12 @@ SEASTAR_TEST_CASE(test_bad_name_udp,
 SEASTAR_TEST_CASE(test_timeout_udp,
                   *enable_if_with_networking()) {
     dns_resolver::options opts;
-    opts.servers = std::vector<inet_address>({ inet_address("1.2.3.4") }); // not a server
+    opts.servers = std::vector<seastar::net::inet_address>({ seastar::net::inet_address("1.2.3.4") }); // not a server
     opts.udp_port = 29953; // not a dns port
     opts.timeout = std::chrono::milliseconds(500);
 
-    auto d = ::make_lw_shared<dns_resolver>(engine().net(), opts);
-    return d->get_host_by_name(seastar_name, inet_address::family::INET).then_wrapped([d](future<hostent> f) {
+    auto d = ::seastar::make_lw_shared<dns_resolver>(seastar::engine().net(), opts);
+    return d->get_host_by_name(seastar_name, seastar::net::inet_address::family::INET).then_wrapped([d](seastar::future<hostent> f) {
         try {
             f.get();
             BOOST_FAIL("should not succeed");
@@ -102,12 +101,12 @@ SEASTAR_TEST_CASE(test_timeout_udp,
 // But we can test for connection refused working as expected.
 SEASTAR_TEST_CASE(test_connection_refused_tcp) {
     dns_resolver::options opts;
-    opts.servers = std::vector<inet_address>({ inet_address("127.0.0.1") });
+    opts.servers = std::vector<seastar::net::inet_address>({ seastar::net::inet_address("127.0.0.1") });
     opts.use_tcp_query = true;
     opts.tcp_port = 29953; // not a dns port
 
-    auto d = ::make_lw_shared<dns_resolver>(engine().net(), opts);
-    return d->get_host_by_name(seastar_name, inet_address::family::INET).then_wrapped([d](future<hostent> f) {
+    auto d = ::seastar::make_lw_shared<dns_resolver>(seastar::engine().net(), opts);
+    return d->get_host_by_name(seastar_name, seastar::net::inet_address::family::INET).then_wrapped([d](seastar::future<hostent> f) {
         try {
             f.get();
             BOOST_FAIL("should not succeed");
@@ -133,11 +132,11 @@ SEASTAR_TEST_CASE(test_bad_name_tcp,
     return test_bad_name(opts);
 }
 
-static const sstring imaps_service = "imaps";
-static const sstring gmail_domain = "gmail.com";
+static const seastar::sstring imaps_service = "imaps";
+static const seastar::sstring gmail_domain = "gmail.com";
 
-static future<> test_srv() {
-    auto d = ::make_lw_shared<dns_resolver>();
+static seastar::future<> test_srv() {
+    auto d = ::seastar::make_lw_shared<dns_resolver>();
     return d->get_srv_records(dns_resolver::srv_proto::tcp,
                               imaps_service,
                               gmail_domain).then([d](dns_resolver::srv_records records) {
@@ -166,8 +165,8 @@ SEASTAR_TEST_CASE(test_parallel_resolve_name,
     dns_resolver::options opts;
     opts.use_tcp_query = true;
 
-    auto d = ::make_lw_shared<dns_resolver>(std::move(opts));
-    return when_all(
+    auto d = ::seastar::make_lw_shared<dns_resolver>(std::move(opts));
+    return seastar::when_all(
         d->resolve_name("www.google.com"),
         d->resolve_name("www.google.com"),
         d->resolve_name("www.google.com"),
@@ -181,8 +180,8 @@ SEASTAR_TEST_CASE(test_parallel_resolve_name_udp,
                   *enable_if_with_networking()) {
     dns_resolver::options opts;
 
-    auto d = ::make_lw_shared<dns_resolver>(std::move(opts));
-    return when_all(
+    auto d = ::seastar::make_lw_shared<dns_resolver>(std::move(opts));
+    return seastar::when_all(
         d->resolve_name("www.google.com"),
         d->resolve_name("www.google.com"),
         d->resolve_name("www.google.com"),

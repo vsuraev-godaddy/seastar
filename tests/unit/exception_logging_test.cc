@@ -30,13 +30,12 @@
 #include <regex>
 
 
-using namespace seastar;
 
 // a class which is not derived from std::exception
 // to play the part of the unknown object in the logging
 // function.
 class unknown_obj {
-    sstring _message;
+    seastar::sstring _message;
 public:
     unknown_obj(std::string message) : _message(message) {}
 };

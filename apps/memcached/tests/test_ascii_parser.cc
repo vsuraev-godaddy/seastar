@@ -27,7 +27,6 @@
 #include "ascii.hh"
 #include <seastar/core/loop.hh>
 
-using namespace seastar;
 using namespace net;
 using namespace memcache;
 
@@ -51,11 +50,11 @@ static auto make_input_stream(packet&& p) {
 }
 
 static auto parse(packet&& p) {
-    auto is = make_lw_shared<input_stream<char>>(make_input_stream(std::move(p)));
-    auto parser = make_lw_shared<parser_type>();
+    auto is = seastar::make_lw_shared<input_stream<char>>(make_input_stream(std::move(p)));
+    auto parser = seastar::make_lw_shared<parser_type>();
     parser->init();
     return is->consume(*parser).then([is, parser] {
-        return make_ready_future<lw_shared_ptr<parser_type>>(parser);
+        return seastar::make_ready_future<seastar::lw_shared_ptr<parser_type>>(parser);
     });
 }
 
@@ -114,7 +113,7 @@ SEASTAR_TEST_CASE(test_not_enough_data_is_an_error) {
 
 SEASTAR_TEST_CASE(test_u32_parsing) {
     return for_each_fragment_size([] (auto make_packet) {
-        return make_ready_future<>().then([make_packet] {
+        return seastar::make_ready_future<>().then([make_packet] {
             return parse(make_packet({"set key 0 0 0\r\n\r\n"})).then([] (auto p) {
                 BOOST_REQUIRE(p->_state == parser_type::state::cmd_set);
                 BOOST_REQUIRE(p->_flags_str == "0");
@@ -147,7 +146,7 @@ SEASTAR_TEST_CASE(test_u32_parsing) {
 
 SEASTAR_TEST_CASE(test_parsing_of_split_data) {
     return for_each_fragment_size([] (auto make_packet) {
-        return make_ready_future<>()
+        return seastar::make_ready_future<>()
                 .then([make_packet] {
             return parse(make_packet({"set key 11", "1 222 3\r\nasd\r\n"}))
                     .then([] (auto p) {
@@ -229,8 +228,8 @@ SEASTAR_TEST_CASE(test_parsing_of_split_data) {
     });
 }
 
-static std::vector<sstring> as_strings(std::vector<item_key>& keys) {
-    std::vector<sstring> v;
+static std::vector<seastar::sstring> as_strings(std::vector<item_key>& keys) {
+    std::vector<seastar::sstring> v;
     for (auto&& key : keys) {
         v.push_back(key.key());
     }
@@ -239,24 +238,24 @@ static std::vector<sstring> as_strings(std::vector<item_key>& keys) {
 
 SEASTAR_TEST_CASE(test_get_parsing) {
     return for_each_fragment_size([] (auto make_packet) {
-        return make_ready_future<>()
+        return seastar::make_ready_future<>()
                 .then([make_packet] {
             return parse(make_packet({"get key1\r\n"}))
                     .then([] (auto p) {
                 BOOST_REQUIRE(p->_state == parser_type::state::cmd_get);
-                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<sstring>({"key1"}));
+                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<seastar::sstring>({"key1"}));
             });
         }).then([make_packet] {
             return parse(make_packet({"get key1 key2\r\n"}))
                     .then([] (auto p) {
                 BOOST_REQUIRE(p->_state == parser_type::state::cmd_get);
-                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<sstring>({"key1", "key2"}));
+                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<seastar::sstring>({"key1", "key2"}));
             });
         }).then([make_packet] {
             return parse(make_packet({"get key1 key2 key3\r\n"}))
                     .then([] (auto p) {
                 BOOST_REQUIRE(p->_state == parser_type::state::cmd_get);
-                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<sstring>({"key1", "key2", "key3"}));
+                BOOST_REQUIRE_EQUAL(as_strings(p->_keys), std::vector<seastar::sstring>({"key1", "key2", "key3"}));
             });
         });
     });
@@ -264,7 +263,7 @@ SEASTAR_TEST_CASE(test_get_parsing) {
 
 SEASTAR_TEST_CASE(test_catches_errors_in_get) {
     return for_each_fragment_size([] (auto make_packet) {
-        return make_ready_future<>()
+        return seastar::make_ready_future<>()
                 .then([make_packet] {
             return parse(make_packet({"get\r\n"}))
                     .then([] (auto p) {

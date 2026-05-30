@@ -36,7 +36,6 @@
 #include <seastar/util/assert.hh>
 #include <seastar/util/internal/iovec_utils.hh>
 
-using namespace seastar;
 
 struct fake_file {
     std::unordered_map<uint64_t, int> data;
@@ -74,7 +73,7 @@ struct io_queue_for_tests {
     io_group_ptr group;
     internal::io_sink sink;
     io_queue queue;
-    timer<> kicker;
+    seastar::timer<> kicker;
 
     io_queue_for_tests()
         : group(std::make_shared<io_group>(io_queue::config{0}, 1))
@@ -91,7 +90,7 @@ struct io_queue_for_tests {
         }
     }
 
-    future<size_t> queue_request(internal::priority_class pc, internal::io_direction_and_length dnl, internal::io_request req, io_intent* intent, iovec_keeper iovs) noexcept {
+    seastar::future<size_t> queue_request(internal::priority_class pc, internal::io_direction_and_length dnl, internal::io_request req, io_intent* intent, iovec_keeper iovs) noexcept {
         return queue.queue_request(pc, dnl, std::move(req), intent, std::move(iovs));
     }
 };
@@ -246,15 +245,15 @@ SEASTAR_THREAD_TEST_CASE(test_io_cancellation) {
 
     io_intent live, dead;
 
-    std::vector<future<>> finished;
-    std::vector<future<>> cancelled;
+    std::vector<seastar::future<>> finished;
+    std::vector<seastar::future<>> cancelled;
 
     auto queue_legacy_request = [&] (io_queue_for_tests& q, internal::priority_class pc) {
         auto buf = std::make_unique<int>(val);
         auto f = q.queue_request(pc, internal::io_direction_and_length(internal::io_direction_and_length::write_idx, 0), file.make_write_req(idx, buf.get()), nullptr, {})
             .then([&file, idx, val, buf = std::move(buf)] (size_t len) {
                 BOOST_REQUIRE(file.data[idx] == val);
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
         finished.push_back(std::move(f));
         idx++;
@@ -266,7 +265,7 @@ SEASTAR_THREAD_TEST_CASE(test_io_cancellation) {
         auto f = q.queue_request(pc, internal::io_direction_and_length(internal::io_direction_and_length::write_idx, 0), file.make_write_req(idx, buf.get()), &live, {})
             .then([&file, idx, val, buf = std::move(buf)] (size_t len) {
                 BOOST_REQUIRE(file.data[idx] == val);
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
         finished.push_back(std::move(f));
         idx++;
@@ -281,7 +280,7 @@ SEASTAR_THREAD_TEST_CASE(test_io_cancellation) {
                     f.get();
                     BOOST_REQUIRE(false);
                 } catch(...) {}
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             })
             .then([&file, idx] () {
                 BOOST_REQUIRE(file.data[idx] == 0);
@@ -366,7 +365,7 @@ SEASTAR_TEST_CASE(test_request_buffer_split) {
         ensure(parts, req, 2, 42 + 26,  7, 0x1234 + 26);
     }
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 static void show_request(const internal::io_request& req, void* buf_off, std::string pfx = "") {
@@ -508,5 +507,5 @@ SEASTAR_TEST_CASE(test_request_iovec_split) {
 
     seastar_logger.info("{} iters ({} no-splits, {} no-tails)", iter, no_splits, no_tails);
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }

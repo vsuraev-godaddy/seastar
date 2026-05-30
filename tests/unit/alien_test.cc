@@ -34,7 +34,6 @@
 #include <tuple>
 
 
-using namespace seastar;
 
 enum {
     ENGINE_READY = 24,
@@ -63,20 +62,20 @@ int main(int argc, char** argv)
             throw std::runtime_error("seastar failed to sent us the ready message");
         }
         // test for alien::run_on()
-        std::promise<char> question;
+        std::seastar::promise<char> question;
         auto answer = question.get_future();
         alien::run_on(app.alien(), 0, [&question]() noexcept {
             question.set_value('*');
         });
-        // test for alien::submit_to(), which returns a std::future<int>
-        std::vector<std::future<int>> counts;
+        // test for alien::submit_to(), which returns a std::seastar::future<int>
+        std::vector<std::seastar::future<int>> counts;
         for (auto i : std::views::iota(0u, smp::count)) {
             // send messages from alien.
             counts.push_back(alien::submit_to(app.alien(), i, [i] {
                 return seastar::make_ready_future<int>(i);
             }));
         }
-        // test for alien::submit_to(), which returns a std::future<void>
+        // test for alien::submit_to(), which returns a std::seastar::future<void>
         alien::submit_to(app.alien(), 0, [] {
             return seastar::make_ready_future<>();
         }).wait();
@@ -96,11 +95,11 @@ int main(int argc, char** argv)
             ::eventfd_write(engine_ready_fd, ENGINE_READY);
             return seastar::now();
         }).then([alien_done = std::move(alien_done), &result]() mutable {
-            return do_with(seastar::pollable_fd(std::move(alien_done)), [&result] (pollable_fd& alien_done_fds) {
+            return seastar::do_with(seastar::pollable_fd(std::move(alien_done)), [&result] (pollable_fd& alien_done_fds) {
                 // check if alien has dismissed me.
                 return alien_done_fds.readable().then([&result, &alien_done_fds] {
                     auto ret = alien_done_fds.get_file_desc().read(&result, sizeof(result));
-                    return make_ready_future<size_t>(*ret);
+                    return seastar::make_ready_future<size_t>(*ret);
                 });
             });
         }).then([&result](size_t n) {

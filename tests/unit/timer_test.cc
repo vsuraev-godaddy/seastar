@@ -28,7 +28,6 @@
 #include <chrono>
 #include <iostream>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 #define BUG() do { \
@@ -42,15 +41,15 @@ using namespace std::chrono_literals;
 
 template <typename Clock>
 struct timer_test {
-    timer<Clock> t1;
-    timer<Clock> t2;
-    timer<Clock> t3;
-    timer<Clock> t4;
-    timer<Clock> t5;
-    promise<> pr1;
-    promise<> pr2;
+    seastar::timer<Clock> t1;
+    seastar::timer<Clock> t2;
+    seastar::timer<Clock> t3;
+    seastar::timer<Clock> t4;
+    seastar::timer<Clock> t5;
+    seastar::promise<> pr1;
+    seastar::promise<> pr2;
 
-    future<> run() {
+    seastar::future<> run() {
         t1.set_callback([this] {
             OK();
             fmt::print(" 500ms timer expired\n");
@@ -78,8 +77,8 @@ struct timer_test {
         });
     }
 
-    future<> test_timer_cancelling() {
-        timer<Clock>& t1 = *new timer<Clock>();
+    seastar::future<> test_timer_cancelling() {
+        seastar::timer<Clock>& t1 = *new seastar::timer<Clock>();
         t1.set_callback([] { BUG(); });
         t1.arm(100ms);
         t1.cancel();
@@ -92,7 +91,7 @@ struct timer_test {
         return pr2.get_future().then([&t1] { delete &t1; });
     }
 
-    future<> test_timer_with_scheduling_groups() {
+    seastar::future<> test_timer_with_scheduling_groups() {
         return async([] {
             auto sg1 = create_scheduling_group("sg1", 100).get();
             auto sg2 = create_scheduling_group("sg2", 100).get();
@@ -108,9 +107,9 @@ struct timer_test {
                         }
                     };
                 };
-                timer<Clock> t1(make_callback_checking_sg(sg1));
+                seastar::timer<Clock> t1(make_callback_checking_sg(sg1));
                 t1.arm(10ms);
-                timer<Clock> t2(sg2, make_callback_checking_sg(sg2));
+                seastar::timer<Clock> t2(sg2, make_callback_checking_sg(sg2));
                 t2.arm(10ms);
                 sleep(500ms).get();
                 if (expirations != 2) {
@@ -125,7 +124,7 @@ struct timer_test {
 };
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
     timer_test<steady_clock_type> t1;
     timer_test<lowres_clock> t2;
     return app.run_deprecated(ac, av, [&t1, &t2] {
@@ -135,7 +134,7 @@ int main(int ac, char** av) {
             return t2.run();
         }).then([] {
             fmt::print("Done\n");
-            engine().exit(0);
+            seastar::engine().exit(0);
         });
     });
 }

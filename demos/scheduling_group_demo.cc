@@ -34,21 +34,20 @@
 #include <cmath>
 #include <ranges>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 template <typename Func, typename Duration>
-future<>
+seastar::future<>
 compute_intensive_task(Duration duration, unsigned& counter, Func func) {
     auto end = std::chrono::steady_clock::now() + duration;
     while (std::chrono::steady_clock::now() < end) {
         func();
     }
     ++counter;
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
-future<>
+seastar::future<>
 heavy_task(unsigned& counter) {
     return compute_intensive_task(1ms, counter, [] {
         static thread_local double x = 1;
@@ -56,7 +55,7 @@ heavy_task(unsigned& counter) {
     });
 }
 
-future<>
+seastar::future<>
 light_task(unsigned& counter) {
     return compute_intensive_task(100us, counter, [] {
         static thread_local double x = 0.1;
@@ -64,7 +63,7 @@ light_task(unsigned& counter) {
     });
 }
 
-future<>
+seastar::future<>
 medium_task(unsigned& counter) {
     return compute_intensive_task(400us, counter, [] {
         static thread_local double x = 0.1;
@@ -74,8 +73,8 @@ medium_task(unsigned& counter) {
 
 using done_func = std::function<bool ()>;
 
-future<>
-run_compute_intensive_tasks(seastar::scheduling_group sg, done_func done, unsigned concurrency, unsigned& counter, std::function<future<> (unsigned& counter)> task) {
+seastar::future<>
+run_compute_intensive_tasks(seastar::scheduling_group sg, done_func done, unsigned concurrency, unsigned& counter, std::function<seastar::future<> (unsigned& counter)> task) {
     return seastar::async([task = std::move(task), sg, concurrency, done, &counter] () mutable {
         while (!done()) {
             parallel_for_each(std::views::iota(0u, concurrency), [task, sg, &counter] (unsigned i) mutable {
@@ -88,8 +87,8 @@ run_compute_intensive_tasks(seastar::scheduling_group sg, done_func done, unsign
     });
 }
 
-future<>
-run_compute_intensive_tasks_in_threads(seastar::scheduling_group sg, done_func done, unsigned concurrency, unsigned& counter, std::function<future<> (unsigned& counter)> task) {
+seastar::future<>
+run_compute_intensive_tasks_in_threads(seastar::scheduling_group sg, done_func done, unsigned concurrency, unsigned& counter, std::function<seastar::future<> (unsigned& counter)> task) {
     auto attr = seastar::thread_attributes();
     attr.sched_group = sg;
     return parallel_for_each(std::views::iota(0u, concurrency), [attr, done, &counter, task] (unsigned i) {
@@ -102,14 +101,14 @@ run_compute_intensive_tasks_in_threads(seastar::scheduling_group sg, done_func d
     });
 }
 
-future<>
-run_with_duty_cycle(float utilization, std::chrono::steady_clock::duration period, done_func done, std::function<future<> (done_func done)> task) {
+seastar::future<>
+run_with_duty_cycle(float utilization, std::chrono::steady_clock::duration period, done_func done, std::function<seastar::future<> (done_func done)> task) {
     return seastar::async([=] {
         bool duty_toggle = true;
         auto t0 = std::chrono::steady_clock::now();
         condition_variable cv;
-        timer<> tmr_on([&] { duty_toggle = true; cv.signal(); });
-        timer<> tmr_off([&] { duty_toggle = false; });
+        seastar::timer<> tmr_on([&] { duty_toggle = true; cv.signal(); });
+        seastar::timer<> tmr_off([&] { duty_toggle = false; });
         tmr_on.arm(t0, period);
         tmr_off.arm(t0 + std::chrono::duration_cast<decltype(t0)::duration>(period * utilization), period);
         auto combined_done = [&] {
@@ -137,7 +136,7 @@ auto var_fn(T& var) {
 }
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
     return app.run(ac, av, [] {
         return seastar::async([] {
             auto sg100 = seastar::create_scheduling_group("sg100", 100).get();
@@ -148,14 +147,14 @@ int main(int ac, char** av) {
             auto ksg50 = seastar::defer([&] () noexcept { seastar::destroy_scheduling_group(sg50).get(); });
 
             bool done = false;
-            auto end = timer<>([&done] {
+            auto end = seastar::timer<>([&done] {
                 done = true;
             });
 
             end.arm(10s);
             unsigned ctr100 = 0, ctr20 = 0, ctr50 = 0;
             fmt::print("running three scheduling groups with 100% duty cycle each:\n");
-            when_all(
+            seastar::when_all(
                     run_compute_intensive_tasks(sg100, var_fn(done), 5, ctr100, heavy_task),
                     run_compute_intensive_tasks(sg20, var_fn(done), 3, ctr20, light_task),
                     run_compute_intensive_tasks_in_threads(sg50, var_fn(done), 2, ctr50, medium_task)
@@ -170,7 +169,7 @@ int main(int ac, char** av) {
             unsigned ctr100_2 = 0, ctr50_2 = 0;
             done = false;
             end.arm(10s);
-            when_all(
+            seastar::when_all(
                     run_compute_intensive_tasks(sg50, var_fn(done), 5, ctr50_2, heavy_task),
                     run_with_duty_cycle(0.5, 1s, var_fn(done), [=, &ctr100_2] (done_func done) {
                         return run_compute_intensive_tasks(sg100, done, 4, ctr100_2, heavy_task);

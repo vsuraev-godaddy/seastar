@@ -30,15 +30,14 @@
 
 #include "expected_exception.hh"
 
-using namespace seastar;
 
 SEASTAR_TEST_CASE(deferred_close_test) {
-  return do_with(gate(), 0, 42, [] (gate& g, int& count, int& expected) {
+  return seastar::do_with(seastar::gate(), 0, 42, [] (seastar::gate& g, int& count, int& expected) {
     return async([&] {
         auto close_gate = deferred_close(g);
 
         for (auto i = 0; i < expected; i++) {
-            (void)with_gate(g, [&count] {
+            (void)seastar::with_gate(g, [&count] {
                 ++count;
             });
         }
@@ -52,14 +51,14 @@ SEASTAR_TEST_CASE(deferred_close_test) {
 }
 
 SEASTAR_TEST_CASE(move_deferred_close_test) {
-  return do_with(gate(), [] (gate& g) {
+  return seastar::do_with(seastar::gate(), [] (seastar::gate& g) {
     return async([&] {
         auto close_gate = make_shared(deferred_close(g));
         // g.close() should not be called when deferred_close is moved away
         BOOST_REQUIRE(!g.is_closed());
     }).then([&] {
-        // Before this test is exercised, gate::close() would run into a
-        // assert failure when leaving previous continuation, if gate::close()
+        // Before this test is exercised, seastar::gate::close() would run into a
+        // assert failure when leaving previous continuation, if seastar::gate::close()
         // is called twice, so this test only verifies the behavior with the
         // release build.
         BOOST_REQUIRE(g.is_closed());
@@ -68,12 +67,12 @@ SEASTAR_TEST_CASE(move_deferred_close_test) {
 }
 
 SEASTAR_TEST_CASE(close_now_test) {
-  return do_with(gate(), 0, 42, [] (gate& g, int& count, int& expected) {
+  return seastar::do_with(seastar::gate(), 0, 42, [] (seastar::gate& g, int& count, int& expected) {
     return async([&] {
         auto close_gate = deferred_close(g);
 
         for (auto i = 0; i < expected; i++) {
-            (void)with_gate(g, [&count] {
+            (void)seastar::with_gate(g, [&count] {
                 ++count;
             });
         }
@@ -81,26 +80,26 @@ SEASTAR_TEST_CASE(close_now_test) {
         close_gate.close_now();
         BOOST_REQUIRE(g.is_closed());
         BOOST_REQUIRE_EQUAL(count, expected);
-        // gate must not be double-closed.
+        // seastar::gate must not be double-closed.
     });
   });
 }
 
 SEASTAR_TEST_CASE(cancel_deferred_close_test) {
-    gate g;
+    seastar::gate g;
     {
         auto close_gate = deferred_close(g);
         close_gate.cancel();
     }
     g.check(); // should not throw
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(with_closeable_test) {
-    return do_with(0, 42, [] (int& count, int& expected) {
-        return with_closeable(gate(), [&] (gate& g) {
+    return seastar::do_with(0, 42, [] (int& count, int& expected) {
+        return with_closeable(seastar::gate(), [&] (seastar::gate& g) {
             for (auto i = 0; i < expected; i++) {
-                (void)with_gate(g, [&count] {
+                (void)seastar::with_gate(g, [&count] {
                     ++count;
                 });
             }
@@ -109,7 +108,7 @@ SEASTAR_TEST_CASE(with_closeable_test) {
             // res should be returned by the function called
             // by with_closeable.
             BOOST_REQUIRE_EQUAL(res, 17);
-            // closing the gate should wait for
+            // closing the seastar::gate should wait for
             // all background continuations to complete
             BOOST_REQUIRE_EQUAL(count, expected);
         });
@@ -117,16 +116,16 @@ SEASTAR_TEST_CASE(with_closeable_test) {
 }
 
 SEASTAR_TEST_CASE(with_closeable_exception_test) {
-    return do_with(0, 42, [] (int& count, int& expected) {
-        return with_closeable(gate(), [&] (gate& g) {
+    return seastar::do_with(0, 42, [] (int& count, int& expected) {
+        return with_closeable(seastar::gate(), [&] (seastar::gate& g) {
             for (auto i = 0; i < expected; i++) {
-                (void)with_gate(g, [&count] {
+                (void)seastar::with_gate(g, [&count] {
                     ++count;
                 });
             }
             throw expected_exception();
         }).handle_exception_type([&] (const expected_exception&) {
-            // closing the gate should also happen when func throws,
+            // closing the seastar::gate should also happen when func throws,
             // waiting for all background continuations to complete
             BOOST_REQUIRE_EQUAL(count, expected);
         });
@@ -154,9 +153,9 @@ public:
         }
     }
 
-    future<> stop() noexcept {
+    seastar::future<> stop() noexcept {
         ++*_ptr;
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 
     int stopped() const noexcept {
@@ -173,11 +172,11 @@ SEASTAR_TEST_CASE(cancel_deferred_stop_test) {
         stop.cancel();
     }
     BOOST_REQUIRE_EQUAL(cs.stopped(), 0);
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(deferred_stop_test) {
-  return do_with(count_stops(), [] (count_stops& cs) {
+  return seastar::do_with(count_stops(), [] (count_stops& cs) {
     return async([&] {
         auto stop_counting = deferred_stop(cs);
     }).then([&] {
@@ -188,7 +187,7 @@ SEASTAR_TEST_CASE(deferred_stop_test) {
 }
 
 SEASTAR_TEST_CASE(move_deferred_stop_test) {
-  return do_with(count_stops(), [] (count_stops& cs) {
+  return seastar::do_with(count_stops(), [] (count_stops& cs) {
     return async([&] {
         auto stop = make_shared(deferred_stop(cs));
     }).then([&] {
@@ -200,7 +199,7 @@ SEASTAR_TEST_CASE(move_deferred_stop_test) {
 }
 
 SEASTAR_TEST_CASE(stop_now_test) {
-  return do_with(count_stops(), [] (count_stops& cs) {
+  return seastar::do_with(count_stops(), [] (count_stops& cs) {
     return async([&] {
         auto stop_counting = deferred_stop(cs);
 
@@ -216,7 +215,7 @@ SEASTAR_TEST_CASE(stop_now_test) {
 }
 
 SEASTAR_TEST_CASE(with_stoppable_test) {
-    return do_with(0, [] (int& stopped) {
+    return seastar::do_with(0, [] (int& stopped) {
         return with_stoppable(count_stops(&stopped), [] (count_stops& cs) {
             return 17;
         }).then([&] (int res) {
@@ -230,7 +229,7 @@ SEASTAR_TEST_CASE(with_stoppable_test) {
 }
 
 SEASTAR_TEST_CASE(with_stoppable_exception_test) {
-    return do_with(0, [] (int& stopped) {
+    return seastar::do_with(0, [] (int& stopped) {
         return with_stoppable(count_stops(&stopped), [] (count_stops& cs) {
             throw expected_exception();
         }).handle_exception_type([&] (const expected_exception&) {
@@ -242,10 +241,10 @@ SEASTAR_TEST_CASE(with_stoppable_exception_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(move_open_gate_test) {
-    gate g1;
+    seastar::gate g1;
     g1.enter();
-    // move an open gate
-    gate g2 = std::move(g1);
+    // move an open seastar::gate
+    seastar::gate g2 = std::move(g1);
     // the state in g1 should be moved into g2
     BOOST_CHECK_EQUAL(g1.get_count(), 0);
     BOOST_REQUIRE_EQUAL(g2.get_count(), 1);
@@ -256,11 +255,11 @@ SEASTAR_THREAD_TEST_CASE(move_open_gate_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(move_closing_gate_test) {
-    gate g1;
+    seastar::gate g1;
     g1.enter();
     auto fut = g1.close();
-    // move a closing gate
-    gate g2 = std::move(g1);
+    // move a closing seastar::gate
+    seastar::gate g2 = std::move(g1);
     BOOST_CHECK_EQUAL(g1.get_count(), 0);
     BOOST_REQUIRE_EQUAL(g2.get_count(), 1);
     g2.leave();
@@ -270,10 +269,10 @@ SEASTAR_THREAD_TEST_CASE(move_closing_gate_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(move_closed_gate_test) {
-    gate g1;
+    seastar::gate g1;
     g1.close().get();
-    // move a closed gate
-    gate g2 = std::move(g1);
+    // move a closed seastar::gate
+    seastar::gate g2 = std::move(g1);
     BOOST_CHECK_EQUAL(g1.get_count(), 0);
     BOOST_CHECK_EQUAL(g2.get_count(), 0);
     BOOST_CHECK(!g1.is_closed());
@@ -281,7 +280,7 @@ SEASTAR_THREAD_TEST_CASE(move_closed_gate_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_basic_test) {
-    gate g;
+    seastar::gate g;
     auto gh = g.hold();
     auto fut = g.close();
     BOOST_CHECK(!fut.available());
@@ -290,13 +289,13 @@ SEASTAR_THREAD_TEST_CASE(gate_holder_basic_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_closed_test) {
-    gate g;
+    seastar::gate g;
     g.close().get();
     BOOST_REQUIRE_THROW(g.hold(), gate_closed_exception);
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_move_test) {
-    gate g;
+    seastar::gate g;
     auto gh0 = g.hold();
     auto fut = g.close();
     BOOST_CHECK(!fut.available());
@@ -307,7 +306,7 @@ SEASTAR_THREAD_TEST_CASE(gate_holder_move_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_copy_test) {
-    gate g;
+    seastar::gate g;
     auto gh0 = g.hold();
     auto gh1 = gh0;
     auto fut = g.close();
@@ -319,12 +318,12 @@ SEASTAR_THREAD_TEST_CASE(gate_holder_copy_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_copy_and_move_test) {
-    gate g0;
+    seastar::gate g0;
     auto gh00 = g0.hold();
     auto gh01 = gh00;
     auto fut0 = g0.close();
     BOOST_CHECK(!fut0.available());
-    gate g1;
+    seastar::gate g1;
     auto gh1 = g1.hold();
     auto fut1 = g1.close();
     BOOST_CHECK(!fut1.available());
@@ -339,11 +338,11 @@ SEASTAR_THREAD_TEST_CASE(gate_holder_copy_and_move_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_copy_after_close_test) {
-    gate g;
+    seastar::gate g;
     auto gh0 = g.hold();
     auto fut = g.close();
     BOOST_CHECK(g.is_closed());
-    gate::holder gh1 = gh0;
+    seastar::gate::holder gh1 = gh0;
     BOOST_CHECK(!fut.available());
     gh0.release();
     BOOST_CHECK(!fut.available());
@@ -353,21 +352,21 @@ SEASTAR_THREAD_TEST_CASE(gate_holder_copy_after_close_test) {
 
 SEASTAR_TEST_CASE(gate_holder_parallel_copy_test) {
     constexpr int expected = 42;
-    return do_with(0, [expected] (int& count) {
-        return with_closeable(gate(), [&] (gate& g) {
+    return seastar::do_with(0, [expected] (int& count) {
+        return with_closeable(seastar::gate(), [&] (seastar::gate& g) {
             auto gh = g.hold();
-            // Copying the gate::holder in the lambda below should keep it open
+            // Copying the seastar::gate::holder in the lambda below should keep it open
             // until all instances complete
             (void)parallel_for_each(std::views::iota(0, expected), [&count, gh = gh] (int) {
                 count++;
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
             return 17;
         }).then([&, expected] (int res) {
             // res should be returned by the function called
             // by with_closeable.
             BOOST_REQUIRE_EQUAL(res, 17);
-            // closing the gate should wait for
+            // closing the seastar::gate should wait for
             // all background continuations to complete
             BOOST_REQUIRE_EQUAL(count, expected);
         });
@@ -375,7 +374,7 @@ SEASTAR_TEST_CASE(gate_holder_parallel_copy_test) {
 }
 
 SEASTAR_THREAD_TEST_CASE(gate_holder_try_close_test) {
-    gate g;
+    seastar::gate g;
     auto gh0 = g.try_hold();
     BOOST_CHECK(gh0.has_value());
     auto fut = g.close();

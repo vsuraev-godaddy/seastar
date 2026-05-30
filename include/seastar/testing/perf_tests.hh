@@ -31,7 +31,6 @@
 #include <seastar/core/loop.hh>
 #include <seastar/testing/linux_perf_event.hh>
 
-using namespace seastar;
 
 namespace perf_tests {
 namespace internal {
@@ -141,7 +140,7 @@ protected:
 
     virtual void set_up() = 0;
     virtual void tear_down() noexcept = 0;
-    virtual future<run_result> do_single_run() = 0;
+    virtual seastar::future<run_result> do_single_run() = 0;
 public:
     performance_test(const std::string& test_case, const std::string& test_group)
         : _test_case(test_case)
@@ -228,11 +227,11 @@ class concrete_performance_test final : public performance_test {
     std::optional<Test> _test;
 
     using test_ret_type = decltype(_test->run());
-    // true iff the test method returns future<...>
+    // true iff the test method returns seastar::future<...>
     static constexpr bool is_async_test = is_future<test_ret_type>::value;
     // true iff the test returns the number of iterations run, otherwise it returns
     // void and we consider each invocation to be 1 iteration
-    static constexpr bool is_iteration_returning = !(std::is_same_v<test_ret_type, future<>> || std::is_void_v<test_ret_type>);
+    static constexpr bool is_iteration_returning = !(std::is_same_v<test_ret_type, seastar::future<>> || std::is_void_v<test_ret_type>);
 private:
 
 protected:
@@ -245,7 +244,7 @@ protected:
     }
 
     [[gnu::hot]]
-    virtual future<run_result> do_single_run() override {
+    virtual seastar::future<run_result> do_single_run() override {
         _instructions_retired_counter.enable();
         _cpu_cycles_retired_counter.enable();
         measure_time.start_run(&_instructions_retired_counter, &_cpu_cycles_retired_counter);
@@ -315,14 +314,14 @@ void do_not_optimize(const T& v)
 }
 
 // PERF_TEST and PERF_TEST_F support both synchronous and asynchronous functions.
-// The former should return `void`, the latter `future<>`.
+// The former should return `void`, the latter `seastar::future<>`.
 // PERF_TEST_C executes a coroutine function, if enabled.
 // PERF_TEST_CN executes a coroutine function, if enabled, returning the number of inner-loops.
 //
 // Test cases may perform multiple operations in a single run, this may be desirable
 // if the cost of an individual operation is very small. This allows measuring either
 // the latency of throughput depending on how the test in written. In such cases,
-// the test function shall return either size_t or future<size_t> for synchronous and
+// the test function shall return either size_t or seastar::future<size_t> for synchronous and
 // asynchronous cases respectively. The returned value shall be the number of iterations
 // done in a single test run.
 
@@ -345,16 +344,16 @@ void do_not_optimize(const T& v)
 
 #define PERF_TEST_C(test_group, test_case) \
     struct test_##test_group##_##test_case : test_group { \
-        inline future<> run(); \
+        inline seastar::future<> run(); \
     }; \
     static ::perf_tests::internal::test_registrar<test_##test_group##_##test_case> \
     test_##test_group##_##test_case##_registrar(#test_group, #test_case); \
-    future<> test_##test_group##_##test_case::run()
+    seastar::future<> test_##test_group##_##test_case::run()
 
 #define PERF_TEST_CN(test_group, test_case) \
     struct test_##test_group##_##test_case : test_group { \
-        inline future<size_t> run(); \
+        inline seastar::future<size_t> run(); \
     }; \
     static ::perf_tests::internal::test_registrar<test_##test_group##_##test_case> \
     test_##test_group##_##test_case##_registrar(#test_group, #test_case); \
-    future<size_t> test_##test_group##_##test_case::run()
+    seastar::future<size_t> test_##test_group##_##test_case::run()

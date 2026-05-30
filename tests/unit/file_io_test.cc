@@ -48,19 +48,18 @@
 #include <sys/statfs.h>
 #include <fcntl.h>
 
-using namespace seastar;
 namespace fs = std::filesystem;
 
 SEASTAR_TEST_CASE(open_flags_test) {
-    open_flags flags = open_flags::rw | open_flags::create  | open_flags::exclusive;
+    open_flags flags = seastar::open_flags::rw | seastar::open_flags::create  | seastar::open_flags::exclusive;
     BOOST_REQUIRE(std::underlying_type_t<open_flags>(flags) ==
-                  (std::underlying_type_t<open_flags>(open_flags::rw) |
-                   std::underlying_type_t<open_flags>(open_flags::create) |
-                   std::underlying_type_t<open_flags>(open_flags::exclusive)));
+                  (std::underlying_type_t<open_flags>(seastar::open_flags::rw) |
+                   std::underlying_type_t<open_flags>(seastar::open_flags::create) |
+                   std::underlying_type_t<open_flags>(seastar::open_flags::exclusive)));
 
-    open_flags mask = open_flags::create  | open_flags::exclusive;
+    open_flags mask = seastar::open_flags::create  | seastar::open_flags::exclusive;
     BOOST_REQUIRE((flags & mask) == mask);
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(access_flags_test) {
@@ -69,13 +68,13 @@ SEASTAR_TEST_CASE(access_flags_test) {
                   (std::underlying_type_t<open_flags>(access_flags::read) |
                    std::underlying_type_t<open_flags>(access_flags::write) |
                    std::underlying_type_t<open_flags>(access_flags::execute)));
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(file_exists_test) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         f.close().get();
         auto exists = file_exists(filename).get();
         BOOST_REQUIRE(exists);
@@ -87,8 +86,8 @@ SEASTAR_TEST_CASE(file_exists_test) {
 
 SEASTAR_TEST_CASE(handle_bad_alloc_test) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         f.close().get();
         bool exists = false;
         memory::with_allocation_failures([&] {
@@ -100,8 +99,8 @@ SEASTAR_TEST_CASE(handle_bad_alloc_test) {
 
 SEASTAR_TEST_CASE(file_access_test) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         f.close().get();
         auto is_accessible = file_accessible(filename, access_flags::read | access_flags::write).get();
         BOOST_REQUIRE(is_accessible);
@@ -111,19 +110,19 @@ SEASTAR_TEST_CASE(file_access_test) {
 struct file_test {
     file_test(file&& f) : f(std::move(f)) {}
     file f;
-    semaphore sem = { 0 };
-    semaphore par = { 1000 };
+    seastar::semaphore sem = { 0 };
+    seastar::semaphore par = { 1000 };
 };
 
 SEASTAR_TEST_CASE(test1) {
     // Note: this tests generates a file "testfile.tmp" with size 4096 * max (= 40 MB).
-  return tmp_dir::do_with([] (tmp_dir& t) {
+  return tmp_dir::seastar::do_with([] (tmp_dir& t) {
     static constexpr auto max = 10000;
-    sstring filename = (t.get_path() / "testfile.tmp").native();
-    return open_file_dma(filename, open_flags::rw | open_flags::create).then([filename] (file f) {
+    seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+    return seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).then([filename] (file f) {
         auto ft = new file_test{std::move(f)};
         for (size_t i = 0; i < max; ++i) {
-            // Don't wait for future, use semaphore to signal when done instead.
+            // Don't wait for future, use seastar::semaphore to signal when done instead.
             (void)ft->par.wait().then([ft, i] {
                 auto wbuf = allocate_aligned_buffer<unsigned char>(4096, 4096);
                 std::fill(wbuf.get(), wbuf.get() + 4096, i);
@@ -167,12 +166,12 @@ SEASTAR_TEST_CASE(parallel_write_fsync) {
             auto written = uint64_t(0);
             auto fsynced_at = uint64_t(0);
 
-            file f = open_file_dma(fname, open_flags::rw | open_flags::create | open_flags::truncate).get();
+            file f = seastar::open_file_dma(fname, seastar::open_flags::rw | seastar::open_flags::create | seastar::open_flags::truncate).get();
             auto close_f = deferred_close(f);
             // Avoid filesystem problems with size-extending operations
             f.truncate(sz).get();
 
-            auto fsync_semaphore = semaphore(0);
+            auto fsync_semaphore = seastar::semaphore(0);
             auto may_write_condvar = condition_variable();
             auto fsync_thread = thread([&] {
                 auto fsynced = uint64_t(0);
@@ -187,7 +186,7 @@ SEASTAR_TEST_CASE(parallel_write_fsync) {
                 }
             });
 
-            auto write_semaphore = semaphore(write_concurrency);
+            auto write_semaphore = seastar::semaphore(write_concurrency);
             while (written < sz) {
                 write_semaphore.wait().get();
                 may_write_condvar.wait([&] {
@@ -227,7 +226,7 @@ SEASTAR_TEST_CASE(test_iov_max) {
     }
 
     auto filename = (t.get_path() / "testfile.tmp").native();
-    auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+    auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
     auto close_f = deferred_close(f);
     size_t left = buffer_size * buffer_count;
     size_t position = 0;
@@ -330,8 +329,8 @@ SEASTAR_THREAD_TEST_CASE(test_sanitize_iovecs) {
 
 SEASTAR_TEST_CASE(test_chmod) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    auto oflags = open_flags::rw | open_flags::create;
-    sstring filename = (t.get_path() / "testfile.tmp").native();
+    auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+    seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
     if (file_exists(filename).get()) {
         remove_file(filename).get();
     }
@@ -339,7 +338,7 @@ SEASTAR_TEST_CASE(test_chmod) {
     auto orig_umask = umask(0);
 
     // test default_file_permissions
-    auto f = open_file_dma(filename, oflags).get();
+    auto f = seastar::open_file_dma(filename, oflags).get();
     f.close().get();
     auto sd = file_stat(filename).get();
     BOOST_CHECK_EQUAL(sd.mode & static_cast<mode_t>(file_permissions::all_permissions), static_cast<mode_t>(file_permissions::default_file_permissions));
@@ -359,8 +358,8 @@ SEASTAR_TEST_CASE(test_chmod) {
 
 SEASTAR_TEST_CASE(test_open_file_dma_permissions) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    auto oflags = open_flags::rw | open_flags::create;
-    sstring filename = (t.get_path() / "testfile.tmp").native();
+    auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+    seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
     if (file_exists(filename).get()) {
         remove_file(filename).get();
     }
@@ -368,7 +367,7 @@ SEASTAR_TEST_CASE(test_open_file_dma_permissions) {
     auto orig_umask = umask(0);
 
     // test default_file_permissions
-    auto f = open_file_dma(filename, oflags).get();
+    auto f = seastar::open_file_dma(filename, oflags).get();
     f.close().get();
     auto sd = file_stat(filename).get();
     BOOST_CHECK_EQUAL(sd.mode & static_cast<mode_t>(file_permissions::all_permissions), static_cast<mode_t>(file_permissions::default_file_permissions));
@@ -378,7 +377,7 @@ SEASTAR_TEST_CASE(test_open_file_dma_permissions) {
     auto options = file_open_options();
     options.create_permissions = file_permissions::user_read | file_permissions::group_read | file_permissions::others_read;
     BOOST_REQUIRE(options.create_permissions != file_permissions::default_file_permissions);
-    f = open_file_dma(filename, oflags, options).get();
+    f = seastar::open_file_dma(filename, oflags, options).get();
     f.close().get();
     sd = file_stat(filename).get();
     BOOST_CHECK_EQUAL(sd.mode & static_cast<mode_t>(file_permissions::all_permissions), static_cast<mode_t>(options.create_permissions));
@@ -390,7 +389,7 @@ SEASTAR_TEST_CASE(test_open_file_dma_permissions) {
 
 SEASTAR_TEST_CASE(test_make_directory_permissions) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    sstring dirname = (t.get_path() / "testdir.tmp").native();
+    seastar::sstring dirname = (t.get_path() / "testdir.tmp").native();
     auto orig_umask = umask(0);
 
     // test default_dir_permissions with make_directory
@@ -413,7 +412,7 @@ SEASTAR_TEST_CASE(test_make_directory_permissions) {
 
 SEASTAR_TEST_CASE(test_touch_directory_permissions) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    sstring dirname = (t.get_path() / "testdir.tmp").native();
+    seastar::sstring dirname = (t.get_path() / "testdir.tmp").native();
     auto orig_umask = umask(0);
 
     // test default_dir_permissions with touch_directory
@@ -443,8 +442,8 @@ SEASTAR_TEST_CASE(test_touch_directory_permissions) {
 
 SEASTAR_TEST_CASE(test_recursive_touch_directory_permissions) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    sstring base_dirname = (t.get_path() / "testbasedir.tmp").native();
-    sstring dirpath = base_dirname + "/" + "testsubdir.tmp";
+    seastar::sstring base_dirname = (t.get_path() / "testbasedir.tmp").native();
+    seastar::sstring dirpath = base_dirname + "/" + "testsubdir.tmp";
     if (file_exists(dirpath).get()) {
         remove_file(dirpath).get();
     }
@@ -489,12 +488,12 @@ SEASTAR_TEST_CASE(test_recursive_touch_directory_permissions) {
 
 SEASTAR_TEST_CASE(test_file_stat_method) {
   return tmp_dir::do_with_thread([] (tmp_dir& t) {
-    auto oflags = open_flags::rw | open_flags::create;
-    sstring filename = (t.get_path() / "testfile.tmp").native();
+    auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+    seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
 
     auto orig_umask = umask(0);
 
-    auto f = open_file_dma(filename, oflags).get();
+    auto f = seastar::open_file_dma(filename, oflags).get();
     auto close_f = deferred_close(f);
     auto st = f.stat().get();
     BOOST_CHECK_EQUAL(st.st_mode & static_cast<mode_t>(file_permissions::all_permissions), static_cast<mode_t>(file_permissions::default_file_permissions));
@@ -505,12 +504,12 @@ SEASTAR_TEST_CASE(test_file_stat_method) {
 
 SEASTAR_TEST_CASE(test_file_write_lifetime_method) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
 
-        auto f1 = open_file_dma(filename, oflags).get();
+        auto f1 = seastar::open_file_dma(filename, oflags).get();
         auto close_f1 = deferred_close(f1);
-        auto f2 = open_file_dma(filename, oflags).get();
+        auto f2 = seastar::open_file_dma(filename, oflags).get();
         auto close_f2 = deferred_close(f2);
 
         // Write life time hint values
@@ -538,10 +537,10 @@ SEASTAR_TEST_CASE(test_file_write_lifetime_method) {
 
 SEASTAR_TEST_CASE(test_file_fcntl) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
 
-        auto f = open_file_dma(filename, oflags).get();
+        auto f = seastar::open_file_dma(filename, oflags).get();
         auto close_f = deferred_close(f);
 
         // Set and verify a lease value
@@ -562,11 +561,11 @@ SEASTAR_TEST_CASE(test_file_fcntl) {
 
 SEASTAR_TEST_CASE(test_file_ioctl) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
         uint64_t block_size = 0;
 
-        auto f = open_file_dma(filename, oflags).get();
+        auto f = seastar::open_file_dma(filename, oflags).get();
         auto close_f = deferred_close(f);
 
         // Issueing an FS ioctl which is applicable on regular files
@@ -592,55 +591,55 @@ SEASTAR_TEST_CASE(test_file_ioctl) {
 class test_layered_file : public layered_file_impl {
 public:
     explicit test_layered_file(file f) : layered_file_impl(std::move(f)) {}
-    virtual future<size_t> write_dma(uint64_t pos, const void* buffer, size_t len, io_intent*) override {
+    virtual seastar::future<size_t> write_dma(uint64_t pos, const void* buffer, size_t len, io_intent*) override {
         abort();
     }
-    virtual future<size_t> write_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) override {
+    virtual seastar::future<size_t> write_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) override {
         abort();
     }
-    virtual future<size_t> read_dma(uint64_t pos, void* buffer, size_t len, io_intent*) override {
+    virtual seastar::future<size_t> read_dma(uint64_t pos, void* buffer, size_t len, io_intent*) override {
         abort();
     }
-    virtual future<size_t> read_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) override {
+    virtual seastar::future<size_t> read_dma(uint64_t pos, std::vector<iovec> iov, io_intent*) override {
         abort();
     }
-    virtual future<> flush(void) override {
+    virtual seastar::future<> flush(void) override {
         abort();
     }
-    virtual future<struct stat> stat(void) override {
+    virtual seastar::future<struct stat> stat(void) override {
         abort();
     }
-    virtual future<> truncate(uint64_t length) override {
+    virtual seastar::future<> truncate(uint64_t length) override {
         abort();
     }
-    virtual future<> discard(uint64_t offset, uint64_t length) override {
+    virtual seastar::future<> discard(uint64_t offset, uint64_t length) override {
         abort();
     }
-    virtual future<> allocate(uint64_t position, uint64_t length) override {
+    virtual seastar::future<> allocate(uint64_t position, uint64_t length) override {
         abort();
     }
-    virtual future<uint64_t> size(void) override {
+    virtual seastar::future<uint64_t> size(void) override {
         abort();
     }
-    virtual future<> close() override {
+    virtual seastar::future<> close() override {
         abort();
     }
     virtual std::unique_ptr<file_handle_impl> dup() override {
         abort();
     }
-    virtual subscription<directory_entry> list_directory(std::function<future<> (directory_entry de)> next) override {
+    virtual subscription<directory_entry> list_directory(std::function<seastar::future<> (directory_entry de)> next) override {
         abort();
     }
-    virtual future<temporary_buffer<uint8_t>> dma_read_bulk(uint64_t offset, size_t range_size, io_intent*) override {
+    virtual seastar::future<temporary_buffer<uint8_t>> dma_read_bulk(uint64_t offset, size_t range_size, io_intent*) override {
         abort();
     }
 };
 
 SEASTAR_TEST_CASE(test_underlying_file) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, oflags).get();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, oflags).get();
         auto close_f = deferred_close(f);
         auto lf = file(make_shared<test_layered_file>(f));
         BOOST_CHECK_EQUAL(f.memory_dma_alignment(), lf.memory_dma_alignment());
@@ -651,13 +650,13 @@ SEASTAR_TEST_CASE(test_underlying_file) {
 
 SEASTAR_TEST_CASE(test_file_stat_method_with_file) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create | open_flags::truncate;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create | seastar::open_flags::truncate;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
         file ref;
 
         auto orig_umask = umask(0);
 
-        auto st = with_file(open_file_dma(filename, oflags), [&ref] (file& f) {
+        auto st = with_file(seastar::open_file_dma(filename, oflags), [&ref] (file& f) {
             // make a copy of f to verify f is auto-closed when `with_file` returns.
             ref = f;
             return f.stat();
@@ -674,10 +673,10 @@ SEASTAR_TEST_CASE(test_file_stat_method_with_file) {
 SEASTAR_TEST_CASE(test_open_error_with_file) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
         auto open_file = [&t] (bool do_open) {
-            auto oflags = open_flags::ro;
-            sstring filename = (t.get_path() / "testfile.tmp").native();
+            auto oflags = seastar::open_flags::ro;
+            seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
             if (do_open) {
-                return open_file_dma(filename, oflags);
+                return seastar::open_file_dma(filename, oflags);
             } else {
                 throw std::runtime_error("expected exception");
             }
@@ -704,13 +703,13 @@ SEASTAR_TEST_CASE(test_open_error_with_file) {
 
 SEASTAR_TEST_CASE(test_with_file_close_on_failure) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create | open_flags::truncate;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create | seastar::open_flags::truncate;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
 
         auto orig_umask = umask(0);
 
         // error-free case
-        auto ref = with_file_close_on_failure(open_file_dma(filename, oflags), [] (file& f) {
+        auto ref = with_file_close_on_failure(seastar::open_file_dma(filename, oflags), [] (file& f) {
             return f;
         }).get();
         auto st = ref.stat().get();
@@ -718,7 +717,7 @@ SEASTAR_TEST_CASE(test_with_file_close_on_failure) {
         BOOST_CHECK_EQUAL(st.st_mode & static_cast<mode_t>(file_permissions::all_permissions), static_cast<mode_t>(file_permissions::default_file_permissions));
 
         // close-on-error case
-        BOOST_REQUIRE_THROW(with_file_close_on_failure(open_file_dma(filename, oflags), [&ref] (file& f) {
+        BOOST_REQUIRE_THROW(with_file_close_on_failure(seastar::open_file_dma(filename, oflags), [&ref] (file& f) {
             ref = f;
             throw std::runtime_error("expected exception");
         }).get(), std::runtime_error);
@@ -736,11 +735,11 @@ namespace seastar {
 
 SEASTAR_TEST_CASE(test_nowait_flag_correctness) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        auto oflags = open_flags::rw | open_flags::create;
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto is_tmpfs = [&] (sstring filename) {
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto is_tmpfs = [&] (seastar::sstring filename) {
             struct ::statfs buf;
-            int fd = ::open(filename.c_str(), static_cast<int>(open_flags::ro));
+            int fd = ::open(filename.c_str(), static_cast<int>(seastar::open_flags::ro));
             SEASTAR_ASSERT(fd != -1);
             auto r = ::fstatfs(fd, &buf);
             if (r == -1) {
@@ -754,7 +753,7 @@ SEASTAR_TEST_CASE(test_nowait_flag_correctness) {
             return;
         }
 
-        auto f = open_file_dma(filename, oflags).get();
+        auto f = seastar::open_file_dma(filename, oflags).get();
         auto close_f = deferred_close(f);
 
         if (is_tmpfs(filename)) {
@@ -774,45 +773,45 @@ SEASTAR_TEST_CASE(test_nowait_flag_correctness) {
 
 SEASTAR_TEST_CASE(test_destruct_just_constructed_append_challenged_file) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto oflags = open_flags::rw | open_flags::create;
-        auto f = open_file_dma(filename, oflags).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
+        auto f = seastar::open_file_dma(filename, oflags).get();
     });
 }
 
 SEASTAR_TEST_CASE(test_destruct_just_constructed_append_challenged_file_with_sloppy_size) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto oflags = open_flags::rw | open_flags::create;
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto oflags = seastar::open_flags::rw | seastar::open_flags::create;
         file_open_options opt;
         opt.sloppy_size = true;
-        auto f = open_file_dma(filename, oflags, opt).get();
+        auto f = seastar::open_file_dma(filename, oflags, opt).get();
     });
 }
 
 SEASTAR_TEST_CASE(test_destruct_append_challenged_file_after_write) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
         auto buf = allocate_aligned_buffer<unsigned char>(4096, 4096);
         std::fill(buf.get(), buf.get() + 4096, 0);
 
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         f.dma_write(0, buf.get(), 4096).get();
     });
 }
 
 SEASTAR_TEST_CASE(test_destruct_append_challenged_file_after_read) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
         auto buf = allocate_aligned_buffer<unsigned char>(4096, 4096);
         std::fill(buf.get(), buf.get() + 4096, 0);
 
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         f.dma_write(0, buf.get(), 4096).get();
         f.flush().get();
         f.close().get();
 
-        f = open_file_dma(filename, open_flags::rw).get();
+        f = seastar::open_file_dma(filename, seastar::open_flags::rw).get();
         f.dma_read(0, buf.get(), 4096).get();
     });
 }
@@ -827,7 +826,7 @@ SEASTAR_TEST_CASE(test_dma_iovec) {
         std::vector<iovec> iovecs;
 
         auto filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         iovecs.push_back(iovec{ wbuf.get(), alignment });
         auto count = f.dma_write(0, iovecs).get();
         BOOST_REQUIRE_EQUAL(count, alignment);
@@ -837,7 +836,7 @@ SEASTAR_TEST_CASE(test_dma_iovec) {
         auto rbuf = allocate_aligned_buffer<char>(alignment, alignment);
 
         // this tests the posix_file_impl
-        f = open_file_dma(filename, open_flags::ro).get();
+        f = seastar::open_file_dma(filename, seastar::open_flags::ro).get();
         std::fill_n(rbuf.get(), alignment, char(0));
         iovecs.clear();
         iovecs.push_back(iovec{ rbuf.get(), alignment });
@@ -847,7 +846,7 @@ SEASTAR_TEST_CASE(test_dma_iovec) {
         BOOST_REQUIRE(std::equal(wbuf.get(), wbuf.get() + alignment, rbuf.get(), rbuf.get() + alignment));
 
         // this tests the append_challenged_posix_file_impl
-        f = open_file_dma(filename, open_flags::rw).get();
+        f = seastar::open_file_dma(filename, seastar::open_flags::rw).get();
         std::fill_n(rbuf.get(), alignment, char(0));
         iovecs.clear();
         iovecs.push_back(iovec{ rbuf.get(), alignment });
@@ -860,8 +859,8 @@ SEASTAR_TEST_CASE(test_dma_iovec) {
 
 SEASTAR_TEST_CASE(test_intent) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
         auto buf = allocate_aligned_buffer<unsigned char>(1024, 1024);
         std::fill(buf.get(), buf.get() + 1024, 'a');
         f.dma_write(0, buf.get(), 1024).get();
@@ -895,7 +894,7 @@ SEASTAR_TEST_CASE(test_intent) {
 
 SEASTAR_TEST_CASE(parallel_overwrite) {
     // Avoid /tmp for tmp_dir, since it can be tmpfs
-    return tmp_dir::do_with("XXXXXXXX.tmp", [] (tmp_dir& t) {
+    return tmp_dir::seastar::do_with("XXXXXXXX.tmp", [] (tmp_dir& t) {
         return async([&] {
             // Check that overwrites at disk_overwrite_dma_alignment() do not cause stalls. First,
             // create a file.
@@ -903,7 +902,7 @@ SEASTAR_TEST_CASE(parallel_overwrite) {
             auto sz = uint64_t(1*1024*1024);
             auto buffer_size = 128*1024;
 
-            file f = open_file_dma(fname, open_flags::rw | open_flags::create | open_flags::truncate).get();
+            file f = seastar::open_file_dma(fname, seastar::open_flags::rw | seastar::open_flags::create | seastar::open_flags::truncate).get();
             // Avoid filesystem problems with size-extending operations
             f.truncate(sz).get();
             auto buf = allocate_aligned_buffer<unsigned char>(buffer_size, f.memory_dma_alignment());
@@ -930,8 +929,8 @@ SEASTAR_TEST_CASE(parallel_overwrite) {
 
 SEASTAR_TEST_CASE(test_oversized_io_works) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
+        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
 
         size_t max_write = f.disk_write_max_length();
         size_t max_read = f.disk_read_max_length();
@@ -945,7 +944,7 @@ SEASTAR_TEST_CASE(test_oversized_io_works) {
         f.close().get();
 
         std::fill(buf.get(), buf.get() + buf_size, 'b');
-        f = open_file_dma(filename, open_flags::rw).get();
+        f = seastar::open_file_dma(filename, seastar::open_flags::rw).get();
         f.dma_read(0, buf.get(), buf_size).get();
 
         BOOST_REQUIRE((size_t)std::count_if(buf.get(), buf.get() + buf_size, [](auto x) { return x == 'a'; }) == buf_size);
@@ -955,7 +954,7 @@ SEASTAR_TEST_CASE(test_oversized_io_works) {
 SEASTAR_TEST_CASE(test_file_system_space) {
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
         const auto& name = t.get_path().native();
-        auto st = engine().statvfs(name).get();
+        auto st = seastar::engine().statvfs(name).get();
         auto si = file_system_space(name).get();
 
         BOOST_REQUIRE_EQUAL(st.f_blocks * st.f_frsize, si.capacity);

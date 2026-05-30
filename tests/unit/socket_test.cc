@@ -39,12 +39,11 @@
 #include <optional>
 #include <tuple>
 
-using namespace seastar;
 
-future<> handle_connection(connected_socket s) {
+seastar::future<> handle_connection(seastar::connected_socket s) {
     auto in = s.input();
     auto out = s.output();
-    return do_with(std::move(in), std::move(out), [](auto& in, auto& out) {
+    return seastar::do_with(std::move(in), std::move(out), [](auto& in, auto& out) {
         return do_until([&in]() { return in.eof(); },
             [&in, &out] {
                 return in.read().then([&out](auto buf) {
@@ -54,16 +53,16 @@ future<> handle_connection(connected_socket s) {
     });
 }
 
-future<> echo_server_loop() {
-    return do_with(
-        server_socket(listen(make_ipv4_address({1234}), listen_options{.reuse_address = true})), [](auto& listener) {
+seastar::future<> echo_server_loop() {
+    return seastar::do_with(
+        server_socket(listen(seastar::make_ipv4_address({1234}), seastar::listen_options{.reuse_address = true})), [](auto& listener) {
               // Connect asynchronously in background.
-              (void)connect(make_ipv4_address({"127.0.0.1", 1234})).then([](connected_socket&& socket) {
+              (void)connect(seastar::make_ipv4_address({"127.0.0.1", 1234})).then([](seastar::connected_socket&& socket) {
                   socket.shutdown_output();
               });
               return listener.accept().then(
-                  [](accept_result ar) {
-                      connected_socket s = std::move(ar.connection);
+                  [](seastar::accept_result ar) {
+                      seastar::connected_socket s = std::move(ar.connection);
                       return handle_connection(std::move(s));
                   }).then([l = std::move(listener)]() mutable { return l.abort_accept(); });
         });
@@ -82,18 +81,18 @@ my_malloc_allocator malloc_allocator;
 std::pmr::polymorphic_allocator<char> allocator{&malloc_allocator};
 
 SEASTAR_TEST_CASE(socket_allocation_test) {
-    return echo_server_loop().finally([](){ engine().exit((malloc_allocator.allocs == malloc_allocator.frees) ? 0 : 1); });
+    return echo_server_loop().finally([](){ seastar::engine().exit((malloc_allocator.allocs == malloc_allocator.frees) ? 0 : 1); });
 }
 
 SEASTAR_TEST_CASE(socket_skip_test) {
     return seastar::async([&] {
-        listen_options lo;
+        seastar::listen_options lo;
         lo.reuse_address = true;
         server_socket ss = seastar::listen(ipv4_addr("127.0.0.1", 1234), lo);
 
-        abort_source as;
+        seastar::abort_source as;
         auto client = async([&as] {
-            connected_socket socket = connect(ipv4_addr("127.0.0.1", 1234)).get();
+            seastar::connected_socket socket = connect(ipv4_addr("127.0.0.1", 1234)).get();
             socket.output().write("abc").get();
             socket.shutdown_output();
             try {
@@ -105,7 +104,7 @@ SEASTAR_TEST_CASE(socket_skip_test) {
             SEASTAR_ASSERT(!"Skipping data from socket is likely stuck");
         });
 
-        accept_result accepted = ss.accept().get();
+        seastar::accept_result accepted = ss.accept().get();
         input_stream<char> input = accepted.connection.input();
         input.skip(16).get();
         as.request_abort();
@@ -117,12 +116,12 @@ SEASTAR_TEST_CASE(test_file_desc_fdinfo) {
     auto fd = file_desc::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     auto info = fd.fdinfo();
     BOOST_REQUIRE_EQUAL(info.substr(0, 8), "socket:[");
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(socket_on_close_test) {
     return seastar::async([&] {
-        listen_options lo;
+        seastar::listen_options lo;
         lo.reuse_address = true;
         server_socket ss = seastar::listen(ipv4_addr("127.0.0.1", 12345), lo);
 
@@ -130,7 +129,7 @@ SEASTAR_TEST_CASE(socket_on_close_test) {
         bool client_notified = false;
 
         auto client = seastar::async([&] {
-            connected_socket cln = connect(ipv4_addr("127.0.0.1", 12345)).get();
+            seastar::connected_socket cln = connect(ipv4_addr("127.0.0.1", 12345)).get();
 
             auto close_wait_fiber = cln.wait_input_shutdown().then([&] {
                 BOOST_REQUIRE_EQUAL(server_closed, true);
@@ -161,7 +160,7 @@ SEASTAR_TEST_CASE(socket_on_close_test) {
         });
 
         auto server = seastar::async([&] {
-            accept_result acc = ss.accept().get();
+            seastar::accept_result acc = ss.accept().get();
             auto out = acc.connection.output();
             auto in = acc.connection.input();
 
@@ -179,13 +178,13 @@ SEASTAR_TEST_CASE(socket_on_close_test) {
             in.close().get();
         });
 
-        when_all(std::move(client), std::move(server)).discard_result().get();
+        seastar::when_all(std::move(client), std::move(server)).discard_result().get();
     });
 }
 
 SEASTAR_TEST_CASE(socket_on_close_local_shutdown_test) {
     return seastar::async([&] {
-        listen_options lo;
+        seastar::listen_options lo;
         lo.reuse_address = true;
         server_socket ss = seastar::listen(ipv4_addr("127.0.0.1", 12345), lo);
 
@@ -193,7 +192,7 @@ SEASTAR_TEST_CASE(socket_on_close_local_shutdown_test) {
         bool client_notified = false;
 
         auto client = seastar::async([&] {
-            connected_socket cln = connect(ipv4_addr("127.0.0.1", 12345)).get();
+            seastar::connected_socket cln = connect(ipv4_addr("127.0.0.1", 12345)).get();
 
             auto close_wait_fiber = cln.wait_input_shutdown().then([&] {
                 BOOST_REQUIRE_EQUAL(server_closed, false);
@@ -218,7 +217,7 @@ SEASTAR_TEST_CASE(socket_on_close_local_shutdown_test) {
         });
 
         auto server = seastar::async([&] {
-            accept_result acc = ss.accept().get();
+            seastar::accept_result acc = ss.accept().get();
             auto in = acc.connection.input();
             auto buf = in.read().get();
             server_closed = true;
@@ -226,17 +225,17 @@ SEASTAR_TEST_CASE(socket_on_close_local_shutdown_test) {
             in.close().get();
         });
 
-        when_all(std::move(client), std::move(server)).discard_result().get();
+        seastar::when_all(std::move(client), std::move(server)).discard_result().get();
     });
 }
 
 // The test makes sure it's possible to abort connect()-ing a socket before
 // it succeeds or fails. The way to abort the in-flight connection is to call
-// shutdown() on the socket. The connect()'s future<> must resolve shortly
+// shutdown() on the socket. The connect()'s seastar::future<> must resolve shortly
 // after that with exception.
 //
 // The test currently fails on io_uring backend -- calling shutdown() doesn't
-// make connect() future<> to resolve, instead it resolves after kernel times
+// make connect() seastar::future<> to resolve, instead it resolves after kernel times
 // out the socket, which's not what test expects (see scylladb/seastar#2303)
 SEASTAR_TEST_CASE(socket_connect_abort_test) {
     return seastar::async([&] {
@@ -260,7 +259,7 @@ SEASTAR_TEST_CASE(socket_connect_abort_test) {
             too_late = true;
         });
 
-        when_all(std::move(cf), std::move(check), std::move(abort)).get();
+        seastar::when_all(std::move(cf), std::move(check), std::move(abort)).get();
     });
 }
 
@@ -270,7 +269,7 @@ SEASTAR_THREAD_TEST_CASE(socket_bufsize) {
     // socket is propagated to the socket returned by accept().
 
     auto buf_size = [](std::optional<int> snd_size, std::optional<int> rcv_size) {
-        listen_options lo{
+        seastar::listen_options lo{
             .reuse_address = true,
             .lba = server_socket::load_balancing_algorithm::fixed,
             .so_sndbuf = snd_size,
@@ -279,8 +278,8 @@ SEASTAR_THREAD_TEST_CASE(socket_bufsize) {
 
         ipv4_addr addr("127.0.0.1", 1234);
         server_socket ss = seastar::listen(addr, lo);
-        connected_socket client = connect(addr).get();
-        connected_socket server = ss.accept().get().connection;
+        seastar::connected_socket client = connect(addr).get();
+        seastar::connected_socket server = ss.accept().get().connection;
 
         auto sockopt = [&](int option) {
             int val{};

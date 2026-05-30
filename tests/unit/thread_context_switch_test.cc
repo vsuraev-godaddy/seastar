@@ -28,13 +28,12 @@
 #include <seastar/core/sleep.hh>
 #include <fmt/printf.h>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 class context_switch_tester {
     uint64_t _switches{0};
-    semaphore _s1{0};
-    semaphore _s2{0};
+    seastar::semaphore _s1{0};
+    seastar::semaphore _s2{0};
     bool _done1{false};
     bool _done2{false};
     thread _t1{[this] { main1(); }};
@@ -59,7 +58,7 @@ public:
     void begin_measurement() {
         _s1.signal();
     }
-    future<uint64_t> measure() {
+    seastar::future<uint64_t> measure() {
         _done1 = true;
         return _t1.join().then([this] {
             return _t2.join();
@@ -67,15 +66,15 @@ public:
             return _switches;
         });
     }
-    future<> stop() {
-        return make_ready_future<>();
+    seastar::future<> stop() {
+        return seastar::make_ready_future<>();
     }
 };
 
 int main(int ac, char** av) {
     static const auto test_time = 5s;
-    return app_template().run_deprecated(ac, av, [] {
-        auto dcstp = std::make_unique<distributed<context_switch_tester>>();
+    return seastar::app_template().run_deprecated(ac, av, [] {
+        auto dcstp = std::make_unique<seastar::distributed<context_switch_tester>>();
         auto& dcst = *dcstp;
         return dcst.start().then([&dcst] {
             return dcst.invoke_on_all(&context_switch_tester::begin_measurement);

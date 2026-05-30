@@ -31,14 +31,13 @@
 #include <utility>
 #include <vector>
 
-using namespace seastar;
 
 SEASTAR_TEST_CASE(test_size_and_extensions_parsing) {
     struct test_set {
-        sstring msg;
+        seastar::sstring msg;
         bool parsable;
-        sstring size = "";
-        std::vector<std::pair<sstring, sstring>> extensions;
+        seastar::sstring size = "";
+        std::vector<std::pair<seastar::sstring, seastar::sstring>> extensions;
 
         temporary_buffer<char> buf() {
             return temporary_buffer<char>(msg.c_str(), msg.size());
@@ -74,15 +73,15 @@ SEASTAR_TEST_CASE(test_size_and_extensions_parsing) {
             }
         }
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_trailer_headers_parsing) {
     struct test_set {
-        sstring msg;
+        seastar::sstring msg;
         bool parsable;
-        sstring header_name = "";
-        sstring header_value = "";
+        seastar::sstring header_name = "";
+        seastar::sstring header_value = "";
 
         temporary_buffer<char> buf() {
             return temporary_buffer<char>(msg.c_str(), msg.size());
@@ -116,5 +115,5 @@ SEASTAR_TEST_CASE(test_trailer_headers_parsing) {
             BOOST_REQUIRE_EQUAL(heads[std::move(tset.header_name)], std::move(tset.header_value));
         }
     }
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }

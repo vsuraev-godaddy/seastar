@@ -60,7 +60,6 @@ namespace seastar {
 
 namespace net {
 
-using namespace seastar;
 
 void create_native_net_device(const native_stack_options& opts) {
 
@@ -111,14 +110,14 @@ void create_native_net_device(const native_stack_options& opts) {
         }
     }
 
-    auto sem = std::make_shared<semaphore>(0);
+    auto sem = std::make_shared<seastar::semaphore>(0);
     std::shared_ptr<device> sdev(dev.release());
     // set_local_queue on all shard in the background,
     // signal when done.
     // FIXME: handle exceptions
     for (unsigned i = 0; i < smp::count; i++) {
         (void)smp::submit_to(i, [&opts, sdev] {
-            uint16_t qid = this_shard_id();
+            uint16_t qid = seastar::this_shard_id();
             if (qid < sdev->hw_queues_count()) {
                 auto qp = sdev->init_local_queue(opts, qid);
                 std::map<unsigned, float> cpu_weights;
@@ -155,15 +154,15 @@ void create_native_net_device(const native_stack_options& opts) {
 // native_network_stack
 class native_network_stack : public network_stack {
 public:
-    static thread_local promise<std::unique_ptr<network_stack>> ready_promise;
+    static thread_local seastar::promise<std::unique_ptr<network_stack>> ready_promise;
 private:
     interface _netif;
     ipv4 _inet;
     bool _dhcp = false;
-    promise<> _config;
-    timer<> _timer;
+    seastar::promise<> _config;
+    seastar::timer<> _timer;
 
-    future<> run_dhcp(bool is_renew = false, const dhcp::lease & res = dhcp::lease());
+    seastar::future<> run_dhcp(bool is_renew = false, const dhcp::lease & res = dhcp::lease());
     void on_dhcp(std::optional<dhcp::lease> lease, bool is_renew);
     void set_ipv4_packet_filter(ip_packet_filter* filter) {
         _inet.set_packet_filter(filter);
@@ -171,16 +170,16 @@ private:
     using tcp4 = tcp<ipv4_traits>;
 public:
     explicit native_network_stack(const native_stack_options& opts, std::shared_ptr<device> dev);
-    virtual server_socket listen(socket_address sa, listen_options opt) override;
+    virtual server_socket listen(seastar::socket_address sa, seastar::listen_options opt) override;
     virtual ::seastar::socket socket() override;
-    virtual udp_channel make_udp_channel(const socket_address& addr) override;
-    virtual net::datagram_channel make_unbound_datagram_channel(sa_family_t) override;
-    virtual net::datagram_channel make_bound_datagram_channel(const socket_address& local) override;
-    virtual future<> initialize() override;
-    static future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts) {
+    virtual udp_channel make_udp_channel(const seastar::socket_address& addr) override;
+    virtual seastar::net::datagram_channel make_unbound_datagram_channel(sa_family_t) override;
+    virtual seastar::net::datagram_channel make_bound_datagram_channel(const seastar::socket_address& local) override;
+    virtual seastar::future<> initialize() override;
+    static seastar::future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts) {
         auto ns_opts = dynamic_cast<const native_stack_options*>(&opts);
         SEASTAR_ASSERT(ns_opts);
-        if (this_shard_id() == 0) {
+        if (seastar::this_shard_id() == 0) {
             create_native_net_device(*ns_opts);
         }
         return ready_promise.get_future();
@@ -209,14 +208,14 @@ public:
     }
 };
 
-thread_local promise<std::unique_ptr<network_stack>> native_network_stack::ready_promise;
+thread_local seastar::promise<std::unique_ptr<network_stack>> native_network_stack::ready_promise;
 
 udp_channel
-native_network_stack::make_udp_channel(const socket_address& addr) {
+native_network_stack::make_udp_channel(const seastar::socket_address& addr) {
     return _inet.get_udp().make_channel(addr);
 }
 
-net::datagram_channel native_network_stack::make_unbound_datagram_channel(sa_family_t family) {
+seastar::net::datagram_channel native_network_stack::make_unbound_datagram_channel(sa_family_t family) {
     if (family != AF_INET) {
         throw std::runtime_error("Unsupported address family");
     }
@@ -224,7 +223,7 @@ net::datagram_channel native_network_stack::make_unbound_datagram_channel(sa_fam
     return _inet.get_udp().make_channel({});
 }
 
-net::datagram_channel native_network_stack::make_bound_datagram_channel(const socket_address& local) {
+seastar::net::datagram_channel native_network_stack::make_bound_datagram_channel(const seastar::socket_address& local) {
     return _inet.get_udp().make_channel(local);
 }
 
@@ -243,7 +242,7 @@ native_network_stack::native_network_stack(const native_stack_options& opts, std
 }
 
 server_socket
-native_network_stack::listen(socket_address sa, listen_options opts) {
+native_network_stack::listen(seastar::socket_address sa, seastar::listen_options opts) {
     SEASTAR_ASSERT(sa.family() == AF_INET || sa.is_unspecified());
     return tcpv4_listen(_inet.get_tcp(), ntohs(sa.as_posix_sockaddr_in().sin_port), opts);
 }
@@ -254,20 +253,20 @@ seastar::socket native_network_stack::socket() {
 
 using namespace std::chrono_literals;
 
-future<> native_network_stack::run_dhcp(bool is_renew, const dhcp::lease& res) {
+seastar::future<> native_network_stack::run_dhcp(bool is_renew, const dhcp::lease& res) {
     dhcp d(_inet);
     // Hijack the ip-stack.
     auto f = d.get_ipv4_filter();
     return smp::invoke_on_all([f] {
-        auto & ns = static_cast<native_network_stack&>(engine().net());
+        auto & ns = static_cast<native_network_stack&>(seastar::engine().net());
         ns.set_ipv4_packet_filter(f);
     }).then([this, d = std::move(d), is_renew, res = res]() mutable {
-        net::dhcp::result_type fut = is_renew ? d.renew(res) : d.discover();
+        seastar::net::dhcp::result_type fut = is_renew ? d.renew(res) : d.discover();
         return fut.then([this, is_renew](std::optional<dhcp::lease> lease) {
             return smp::invoke_on_all([] {
-                auto & ns = static_cast<native_network_stack&>(engine().net());
+                auto & ns = static_cast<native_network_stack&>(seastar::engine().net());
                 ns.set_ipv4_packet_filter(nullptr);
-            }).then(std::bind(&net::native_network_stack::on_dhcp, this, lease, is_renew));
+            }).then(std::bind(&seastar::net::native_network_stack::on_dhcp, this, lease, is_renew));
         }).finally([d = std::move(d)] {});
     });
 }
@@ -284,12 +283,12 @@ void native_network_stack::on_dhcp(std::optional<dhcp::lease> lease, bool is_ren
         _config.set_value();
     }
 
-    if (this_shard_id() == 0) {
+    if (seastar::this_shard_id() == 0) {
         // And the other cpus, which, in the case of initial discovery,
         // will be waiting for us.
         for (unsigned i = 1; i < smp::count; i++) {
             (void)smp::submit_to(i, [lease, is_renew]() {
-                auto & ns = static_cast<native_network_stack&>(engine().net());
+                auto & ns = static_cast<native_network_stack&>(seastar::engine().net());
                 ns.on_dhcp(lease, is_renew);
             });
         }
@@ -298,7 +297,7 @@ void native_network_stack::on_dhcp(std::optional<dhcp::lease> lease, bool is_ren
             auto& res = *lease;
             _timer.set_callback(
                     [this, res]() {
-                        _config = promise<>();
+                        _config = seastar::promise<>();
                         // callback ignores future result
                         (void)run_dhcp(true, res);
                     });
@@ -309,7 +308,7 @@ void native_network_stack::on_dhcp(std::optional<dhcp::lease> lease, bool is_ren
     }
 }
 
-future<> native_network_stack::initialize() {
+seastar::future<> native_network_stack::initialize() {
     return network_stack::initialize().then([this]() {
         if (!_dhcp) {
             return make_ready_future();
@@ -317,7 +316,7 @@ future<> native_network_stack::initialize() {
 
         // Only run actual discover on main cpu.
         // All other cpus must simply for main thread to complete and signal them.
-        if (this_shard_id() == 0) {
+        if (seastar::this_shard_id() == 0) {
             // FIXME: future is discarded
             (void)run_dhcp();
         }
@@ -329,7 +328,7 @@ void arp_learn(ethernet_address l2, ipv4_address l3)
 {
     // Run arp_learn on all shard in the background
     (void)smp::invoke_on_all([l2, l3] {
-        auto & ns = static_cast<native_network_stack&>(engine().net());
+        auto & ns = static_cast<native_network_stack&>(seastar::engine().net());
         ns.arp_learn(l2, l3);
     });
 }
@@ -381,9 +380,9 @@ network_stack_entry register_native_stack() {
     return network_stack_entry{"native", std::make_unique<native_stack_options>(), native_network_stack::create, false};
 }
 
-class native_network_stack::native_network_interface : public net::network_interface_impl {
+class native_network_stack::native_network_interface : public seastar::net::network_interface_impl {
     const native_network_stack& _stack;
-    std::vector<net::inet_address> _addresses;
+    std::vector<seastar::net::inet_address> _addresses;
     std::vector<uint8_t> _hardware_address;
 public:
     native_network_interface(const native_network_stack& stack)
@@ -401,14 +400,14 @@ public:
     uint32_t mtu() const override {
         return _stack._inet.netif()->hw_features().mtu;
     }
-    const sstring& name() const override {
-        static const sstring name = "if0";
+    const seastar::sstring& name() const override {
+        static const seastar::sstring name = "if0";
         return name;
     }
-    const sstring& display_name() const override {
+    const seastar::sstring& display_name() const override {
         return name();
     }
-    const std::vector<net::inet_address>& addresses() const override {
+    const std::vector<seastar::net::inet_address>& addresses() const override {
         return _addresses;
     }
     const std::vector<uint8_t> hardware_address() const override {

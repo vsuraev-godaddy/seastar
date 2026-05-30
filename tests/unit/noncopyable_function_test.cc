@@ -25,7 +25,6 @@
 #include <boost/test/unit_test.hpp>
 #include <seastar/util/noncopyable_function.hh>
 
-using namespace seastar;
 
 BOOST_AUTO_TEST_CASE(basic_tests) {
     struct s {

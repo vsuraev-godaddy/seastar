@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <iostream>
 
-using namespace seastar;
 
 struct reader {
 public:
@@ -43,41 +42,41 @@ public:
 
     // for input_stream::consume():
     using unconsumed_remainder = std::optional<temporary_buffer<char>>;
-    future<unconsumed_remainder> operator()(temporary_buffer<char> data) {
+    seastar::future<unconsumed_remainder> operator()(temporary_buffer<char> data) {
         if (data.empty()) {
-            return make_ready_future<unconsumed_remainder>(std::move(data));
+            return seastar::make_ready_future<unconsumed_remainder>(std::move(data));
         } else {
             count += std::count(data.begin(), data.end(), '\n');
             // FIXME: last line without \n?
-            return make_ready_future<unconsumed_remainder>();
+            return seastar::make_ready_future<unconsumed_remainder>();
         }
     }
 };
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
     namespace bpo = boost::program_options;
     app.add_positional_options({
         { "file", bpo::value<std::string>(), "File to process", 1 },
     });
     return app.run(ac, av, [&app] {
         auto fname = app.configuration()["file"].as<std::string>();
-        return open_file_dma(fname, open_flags::ro).then([] (file f) {
+        return seastar::open_file_dma(fname, seastar::open_flags::ro).then([] (file f) {
             auto r = make_shared<reader>(std::move(f));
             return r->is.consume(*r).then([r] {
                fmt::print("{:d} lines\n", r->count);
                return r->is.close().then([r] {});
             });
-        }).then_wrapped([] (future<> f) -> future<int> {
+        }).then_wrapped([] (seastar::future<> f) -> seastar::future<int> {
             try {
                 f.get();
-                return make_ready_future<int>(0);
+                return seastar::make_ready_future<int>(0);
             } catch (std::exception& ex) {
                 std::cout << ex.what() << "\n";
-                return make_ready_future<int>(1);
+                return seastar::make_ready_future<int>(1);
             } catch (...) {
                 std::cout << "unknown exception\n";
-                return make_ready_future<int>(1);
+                return seastar::make_ready_future<int>(1);
             }
         });
     });

@@ -29,7 +29,6 @@
 #include <seastar/util/log.hh>
 #include <seastar/util/alloc_failure_injector.hh>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 static seastar::logger testlog("testlog");
@@ -63,7 +62,7 @@ SEASTAR_THREAD_TEST_CASE(test_queue_pop_eventually) {
     });
     stop_timer.arm(test_duration);
     auto start = std::chrono::system_clock::now();
-    auto pusher = repeat([&] {
+    auto pusher = seastar::repeat([&] {
         auto&& data = pushed;
         testlog.trace("pusher: full={} empty={} stop={}", q.full(), q.empty(), stop);
         return q.push_eventually(std::move(data)).then([&] {
@@ -76,13 +75,13 @@ SEASTAR_THREAD_TEST_CASE(test_queue_pop_eventually) {
             return stop_iteration::no;
         });
     });
-    auto popper = repeat([&] {
+    auto popper = seastar::repeat([&] {
         testlog.trace("popper: full={} empty={} stop={}", q.full(), q.empty(), stop);
         if (q.empty()) {
             if (pusher_done) {
                 testlog.debug("popper done");
                 popper_done = true;
-                return make_ready_future<stop_iteration>(true);
+                return seastar::make_ready_future<stop_iteration>(true);
             } else if (stop) {
                 testlog.debug("popper: full={} empty={} pusher_done={} stop={}", q.full(), q.empty(), pusher_done, stop);
             }
@@ -125,7 +124,7 @@ SEASTAR_TEST_CASE(test_queue_pop_after_abort) {
         queue<int> q(1);
         bool exception = false;
         bool timer = false;
-        future<> done = make_ready_future();
+        seastar::future<> done = make_ready_future();
         q.abort(std::make_exception_ptr(std::runtime_error("boom")));
         done = sleep(1ms).then([&] {
             timer = true;
@@ -146,7 +145,7 @@ SEASTAR_TEST_CASE(test_queue_push_abort) {
         queue<int> q(1);
         bool exception = false;
         bool timer = false;
-        future<> done = make_ready_future();
+        seastar::future<> done = make_ready_future();
         q.abort(std::make_exception_ptr(std::runtime_error("boom")));
         done = sleep(1ms).then([&] {
             timer = true;

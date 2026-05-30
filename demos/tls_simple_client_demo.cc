@@ -29,12 +29,11 @@
 #include <seastar/net/dns.hh>
 #include "tls_echo_server.hh"
 
-using namespace seastar;
 namespace bpo = boost::program_options;
 
 
 int main(int ac, char** av) {
-    app_template app;
+    seastar::app_template app;
     app.add_options()
                     ("port", bpo::value<uint16_t>()->default_value(10000), "Remote port")
                     ("address", bpo::value<std::string>()->default_value("127.0.0.1"), "Remote address")
@@ -61,25 +60,25 @@ int main(int ac, char** av) {
 
         std::cout << "Starting..." << std::endl;
 
-        auto certs = ::make_shared<tls::certificate_credentials>();
+        auto certs = ::make_shared<seastar::tls::certificate_credentials>();
         auto f = make_ready_future();
 
         if (config.count("trust")) {
-            f = certs->set_x509_trust_file(config["trust"].as<std::string>(), tls::x509_crt_format::PEM);
+            f = certs->set_x509_trust_file(config["trust"].as<std::string>(), seastar::tls::x509_crt_format::PEM);
         }
 
-        seastar::shared_ptr<sstring> msg;
+        seastar::shared_ptr<seastar::sstring> msg;
 
         if (config.count("msg")) {
-            msg = seastar::make_shared<sstring>(config["msg"].as<std::string>());
+            msg = seastar::make_shared<seastar::sstring>(config["msg"].as<std::string>());
         } else {
-            msg = seastar::make_shared<sstring>(uninitialized_string(n));
+            msg = seastar::make_shared<seastar::sstring>(uninitialized_string(n));
             for (size_t i = 0; i < n; ++i) {
                 (*msg)[i] = '0' + char(::rand() % 30);
             }
         }
 
-        sstring server_name;
+        seastar::sstring server_name;
         if (config.count("server-name")) {
             server_name = config["server-name"].as<std::string>();
         }
@@ -87,15 +86,15 @@ int main(int ac, char** av) {
             std::cout << "Msg (" << msg->size() << "B):" << std::endl << *msg << std::endl;
         }
         return f.then([=]() {
-            return net::dns::get_host_by_name(addr).then([=](net::hostent e) {
+            return seastar::net::dns::get_host_by_name(addr).then([=](seastar::net::hostent e) {
                 ipv4_addr ia(e.addr_list.front(), port);
 
-                tls::tls_options options;
+                seastar::tls::tls_options options;
                 if (check) {
                     options.server_name = server_name.empty() ? e.names.front() : server_name;
                 }
-                return tls::connect(certs, ia, options).then([=](::connected_socket s) {
-                    auto strms = ::make_lw_shared<streams>(std::move(s));
+                return seastar::tls::connect(certs, ia, options).then([=](::seastar::connected_socket s) {
+                    auto strms = ::seastar::make_lw_shared<streams>(std::move(s));
                     auto range = std::views::iota(size_t(0), i);
                     return do_for_each(range, [=](auto) {
                         auto f = strms->out.write(*msg);
@@ -107,7 +106,7 @@ int main(int ac, char** av) {
                         return f.then([=]() {
                             return strms->out.flush().then([=] {
                                 return strms->in.read_exactly(msg->size()).then([=](temporary_buffer<char> buf) {
-                                    sstring tmp(buf.begin(), buf.end());
+                                    seastar::sstring tmp(buf.begin(), buf.end());
                                     if (tmp != *msg) {
                                         std::cerr << "Got garbled message!" << std::endl;
                                         if (verbose) {
@@ -119,7 +118,7 @@ int main(int ac, char** av) {
                             });
                         });
                     }).then([strms, do_read]{
-                        return do_read ? strms->out.close() : make_ready_future<>();
+                        return do_read ? strms->out.close() : seastar::make_ready_future<>();
                     }).finally([strms]{
                         return strms->in.close();
                     });
@@ -128,7 +127,7 @@ int main(int ac, char** av) {
                 std::cerr << "Error: " << ep << std::endl;
             });
         }).finally([] {
-            engine().exit(0);
+            seastar::engine().exit(0);
         });
     });
 }

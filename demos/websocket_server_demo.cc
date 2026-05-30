@@ -29,7 +29,6 @@
 #include <seastar/core/thread.hh>
 #include <seastar/util/defer.hh>
 
-using namespace seastar;
 using namespace seastar::experimental;
 
 namespace bpo = boost::program_options;
@@ -46,25 +45,25 @@ int main(int argc, char** argv) {
             websocket::server ws;
             ws.register_handler("echo", [] (input_stream<char>& in,
                         output_stream<char>& out) {
-                return repeat([&in, &out]() {
+                return seastar::repeat([&in, &out]() {
                     return in.read().then([&out](temporary_buffer<char> f) {
                         std::cerr << "f.size(): " << f.size() << "\n";
                         if (f.empty()) {
-                            return make_ready_future<stop_iteration>(stop_iteration::yes);
+                            return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
                         } else {
                             return out.write(std::move(f)).then([&out]() {
                                 return out.flush().then([] {
-                                    return make_ready_future<stop_iteration>(stop_iteration::no);
+                                    return seastar::make_ready_future<stop_iteration>(stop_iteration::no);
                                 });
                             });
                         }
                     });
                 });
             });
-            auto d = defer([&ws] () noexcept {
+            auto d = seastar::defer([&ws] () noexcept {
                 ws.stop().get();
             });
-            ws.listen(socket_address(ipv4_addr("127.0.0.1", port)));
+            ws.listen(seastar::socket_address(ipv4_addr("127.0.0.1", port)));
             std::cout << "Listening on 127.0.0.1:" << port << " for 1 hour (interruptible, hit Ctrl-C to stop)..." << std::endl;
             seastar::sleep_abortable(std::chrono::hours(1)).handle_exception([](auto ignored) {}).get();
             std::cout << "Stopping the server, deepest thanks to all clients, hope we meet again" << std::endl;

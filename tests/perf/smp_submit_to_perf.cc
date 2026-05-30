@@ -29,7 +29,6 @@
 #include <seastar/core/sleep.hh>
 #include <seastar/util/later.hh>
 
-using namespace seastar;
 using namespace std::chrono;
 
 class thinker {
@@ -52,16 +51,16 @@ class thinker {
 
     poisson_process _pause;
     bool _stop;
-    future<> _done;
+    seastar::future<> _done;
 
-    future<> start_thinking(unsigned concurrency) {
+    seastar::future<> start_thinking(unsigned concurrency) {
         return parallel_for_each(std::views::iota(0u, concurrency), [this] (unsigned f) {
             return do_until([this] { return _stop; }, [this] {
                 auto until = steady_clock::now() + _pause.get();
                 while (steady_clock::now() < until) {
                     ; // do nothing
                 }
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
         });
     }
@@ -72,10 +71,10 @@ public:
         , _stop(false)
         , _done(start_thinking(concurrency))
     {
-        fmt::print("shard {} starts {}x{}us thinkers\n", this_shard_id(), concurrency, think.count());
+        fmt::print("shard {} starts {}x{}us thinkers\n", seastar::this_shard_id(), concurrency, think.count());
     }
 
-    future<> stop() {
+    seastar::future<> stop() {
         _stop = true;
         return std::move(_done);
     }
@@ -107,21 +106,21 @@ class worker {
 
     uint64_t _total;
     bool _stop;
-    future<> _done;
+    seastar::future<> _done;
 
     static unsigned my_target(unsigned targets) noexcept {
         unsigned group_size = (smp::count + (targets - 1)) / targets;
-        unsigned group_no = this_shard_id() / group_size;
+        unsigned group_no = seastar::this_shard_id() / group_size;
         return group_size * group_no;
     }
 
-    future<> start_working(unsigned concurrency, respond_type resp, microseconds tmo) {
+    seastar::future<> start_working(unsigned concurrency, respond_type resp, microseconds tmo) {
         return parallel_for_each(std::views::iota(0u, concurrency), [this, resp, tmo] (unsigned f) {
             return do_until([this] { return _stop; }, [this, resp, tmo] {
                 return smp::submit_to(_to, [resp, tmo] {
                     switch (resp) {
                     case respond_type::ready:
-                        return make_ready_future<>();
+                        return seastar::make_ready_future<>();
                     case respond_type::yield:
                         return yield();
                     case respond_type::io:
@@ -133,7 +132,7 @@ class worker {
                     __builtin_unreachable();
                 }).then([this] {
                     _total++;
-                    return make_ready_future<>();
+                    return seastar::make_ready_future<>();
                 });
             });
         });
@@ -158,18 +157,18 @@ public:
     {
     }
 
-    future<> stop() {
+    seastar::future<> stop() {
         if (_stop) {
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         }
 
         _stop = true;
         return std::move(_done).then([this] {
-            return _think ? _think->stop() : make_ready_future<>();
+            return _think ? _think->stop() : seastar::make_ready_future<>();
         });
     }
 
-    bool is_target() const noexcept { return _to == this_shard_id(); }
+    bool is_target() const noexcept { return _to == seastar::this_shard_id(); }
     uint64_t total() const noexcept { return _total; }
 };
 
@@ -198,7 +197,7 @@ public:
 };
 
 int main(int ac, char** av) {
-    app_template at;
+    seastar::app_template at;
     namespace bpo = boost::program_options;
     at.add_options()
             ("duration", bpo::value<unsigned>()->default_value(32), "time to run the test (seconds)")

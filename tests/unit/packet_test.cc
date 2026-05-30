@@ -26,27 +26,26 @@
 #include <seastar/net/packet.hh>
 #include <array>
 
-using namespace seastar;
 using namespace net;
 
 BOOST_AUTO_TEST_CASE(test_many_fragments) {
     std::vector<char> expected;
 
-    auto append = [&expected] (net::packet p, char c, size_t n) {
+    auto append = [&expected] (seastar::net::packet p, char c, size_t n) {
         auto tmp = temporary_buffer<char>(n);
         std::fill_n(tmp.get_write(), n, c);
         std::fill_n(std::back_inserter(expected), n, c);
-        return net::packet(std::move(p), std::move(tmp));
+        return seastar::net::packet(std::move(p), std::move(tmp));
     };
 
-    net::packet p;
+    seastar::net::packet p;
     p = append(std::move(p), 'a', 5);
     p = append(std::move(p), 'b', 31);
     p = append(std::move(p), 'c', 65);
     p = append(std::move(p), 'c', 4096);
     p = append(std::move(p), 'd', 4096);
 
-    auto verify = [&expected] (const net::packet& p) {
+    auto verify = [&expected] (const seastar::net::packet& p) {
         BOOST_CHECK_EQUAL(p.len(), expected.size());
         auto expected_it = expected.begin();
         for (auto&& frag : p.fragments()) {
@@ -56,7 +55,7 @@ BOOST_AUTO_TEST_CASE(test_many_fragments) {
         }
     };
 
-    auto trim_front = [&expected] (net::packet& p, size_t n) {
+    auto trim_front = [&expected] (seastar::net::packet& p, size_t n) {
         p.trim_front(n);
         expected.erase(expected.begin(), expected.begin() + n);
     };
@@ -75,7 +74,7 @@ BOOST_AUTO_TEST_CASE(test_many_fragments) {
     trim_front(p, 1024);
     verify(p);
 
-    net::packet p2;
+    seastar::net::packet p2;
     p2 = append(std::move(p2), 'z', 9);
     p2 = append(std::move(p2), 'x', 7);
 

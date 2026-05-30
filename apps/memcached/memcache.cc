@@ -54,7 +54,6 @@
 #define VERSION "v1.0"
 #define VERSION_STRING PLATFORM " " VERSION
 
-using namespace seastar;
 using namespace net;
 
 namespace memcache {
@@ -152,8 +151,8 @@ private:
     char _data[]; // layout: data=key, (data+key_size)=ascii_prefix, (data+key_size+ascii_prefix_size)=value.
     friend class cache;
 public:
-    item(uint32_t slab_page_index, item_key&& key, sstring&& ascii_prefix,
-         sstring&& value, expiration expiry, version_type version = 1)
+    item(uint32_t slab_page_index, item_key&& key, seastar::sstring&& ascii_prefix,
+         seastar::sstring&& value, expiration expiry, version_type version = 1)
         : _version(version)
         , _key_hash(key.hash())
         , _expiry(expiry)
@@ -362,8 +361,8 @@ struct local_origin_tag {
 
 struct item_insertion_data {
     item_key key;
-    sstring ascii_prefix;
-    sstring data;
+    seastar::sstring ascii_prefix;
+    seastar::sstring data;
     expiration expiry;
 };
 
@@ -380,11 +379,11 @@ private:
     std::vector<cache_type::bucket_type> _buckets;
     cache_type _cache;
     seastar::timer_set<item, &item::_timer_link> _alive;
-    timer<clock_type> _timer;
+    seastar::timer<clock_type> _timer;
     // delta in seconds between the current values of a wall clock and a clock_type clock
     clock_type::duration _wc_to_clock_type_delta;
     cache_stats _stats;
-    timer<clock_type> _flush_timer;
+    seastar::timer<clock_type> _flush_timer;
 private:
     size_t item_size(item& item_ref) {
         constexpr size_t field_alignment = alignof(void*);
@@ -656,7 +655,7 @@ public:
         }
         item_insertion_data insertion {
             .key = Origin::move_if_local(key),
-            .ascii_prefix = sstring(item_ref.ascii_prefix().data(), item_ref.ascii_prefix_size()),
+            .ascii_prefix = seastar::sstring(item_ref.ascii_prefix().data(), item_ref.ascii_prefix_size()),
             .data = to_sstring(*value + delta),
             .expiry = item_ref._expiry
         };
@@ -679,7 +678,7 @@ public:
         }
         item_insertion_data insertion {
             .key = Origin::move_if_local(key),
-            .ascii_prefix = sstring(item_ref.ascii_prefix().data(), item_ref.ascii_prefix_size()),
+            .ascii_prefix = seastar::sstring(item_ref.ascii_prefix().data(), item_ref.ascii_prefix_size()),
             .data = to_sstring(*value - std::min(*value, delta)),
             .expiry = item_ref._expiry
         };
@@ -687,7 +686,7 @@ public:
         return {boost::intrusive_ptr<item>(&*i), true};
     }
 
-    std::pair<unsigned, foreign_ptr<lw_shared_ptr<std::string>>> print_hash_stats() {
+    std::pair<unsigned, foreign_ptr<seastar::lw_shared_ptr<std::string>>> print_hash_stats() {
         static constexpr unsigned bits = sizeof(size_t) * 8;
         size_t histo[bits + 1] {};
         size_t max_size = 0;
@@ -725,108 +724,108 @@ public:
             }
             ss << histo[i] << "\n";
         }
-        return {this_shard_id(), make_foreign(make_lw_shared<std::string>(ss.str()))};
+        return {seastar::this_shard_id(), make_foreign(seastar::make_lw_shared<std::string>(ss.str()))};
     }
 
-    future<> stop() { return make_ready_future<>(); }
+    seastar::future<> stop() { return seastar::make_ready_future<>(); }
     clock_type::duration get_wc_to_clock_type_delta() { return _wc_to_clock_type_delta; }
 };
 
 class sharded_cache {
 private:
-    distributed<cache>& _peers;
+    seastar::distributed<cache>& _peers;
 
     inline
     unsigned get_cpu(const item_key& key) {
         return std::hash<item_key>()(key) % smp::count;
     }
 public:
-    sharded_cache(distributed<cache>& peers) : _peers(peers) {}
+    sharded_cache(seastar::distributed<cache>& peers) : _peers(peers) {}
 
-    future<> flush_all() {
+    seastar::future<> flush_all() {
         return _peers.invoke_on_all(&cache::flush_all);
     }
 
-    future<> flush_at(uint32_t time) {
+    seastar::future<> flush_at(uint32_t time) {
         return _peers.invoke_on_all(&cache::flush_at, time);
     }
 
     auto get_wc_to_clock_type_delta() { return _peers.local().get_wc_to_clock_type_delta(); }
 
     // The caller must keep @insertion live until the resulting future resolves.
-    future<bool> set(item_insertion_data& insertion) {
+    seastar::future<bool> set(item_insertion_data& insertion) {
         auto cpu = get_cpu(insertion.key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<bool>(_peers.local().set(insertion));
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<bool>(_peers.local().set(insertion));
         }
         return _peers.invoke_on(cpu, &cache::set<remote_origin_tag>, std::ref(insertion));
     }
 
     // The caller must keep @insertion live until the resulting future resolves.
-    future<bool> add(item_insertion_data& insertion) {
+    seastar::future<bool> add(item_insertion_data& insertion) {
         auto cpu = get_cpu(insertion.key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<bool>(_peers.local().add(insertion));
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<bool>(_peers.local().add(insertion));
         }
         return _peers.invoke_on(cpu, &cache::add<remote_origin_tag>, std::ref(insertion));
     }
 
     // The caller must keep @insertion live until the resulting future resolves.
-    future<bool> replace(item_insertion_data& insertion) {
+    seastar::future<bool> replace(item_insertion_data& insertion) {
         auto cpu = get_cpu(insertion.key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<bool>(_peers.local().replace(insertion));
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<bool>(_peers.local().replace(insertion));
         }
         return _peers.invoke_on(cpu, &cache::replace<remote_origin_tag>, std::ref(insertion));
     }
 
     // The caller must keep @key live until the resulting future resolves.
-    future<bool> remove(const item_key& key) {
+    seastar::future<bool> remove(const item_key& key) {
         auto cpu = get_cpu(key);
         return _peers.invoke_on(cpu, &cache::remove, std::ref(key));
     }
 
     // The caller must keep @key live until the resulting future resolves.
-    future<item_ptr> get(const item_key& key) {
+    seastar::future<item_ptr> get(const item_key& key) {
         auto cpu = get_cpu(key);
         return _peers.invoke_on(cpu, &cache::get, std::ref(key));
     }
 
     // The caller must keep @insertion live until the resulting future resolves.
-    future<cas_result> cas(item_insertion_data& insertion, item::version_type version) {
+    seastar::future<cas_result> cas(item_insertion_data& insertion, item::version_type version) {
         auto cpu = get_cpu(insertion.key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<cas_result>(_peers.local().cas(insertion, version));
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<cas_result>(_peers.local().cas(insertion, version));
         }
         return _peers.invoke_on(cpu, &cache::cas<remote_origin_tag>, std::ref(insertion), std::move(version));
     }
 
-    future<cache_stats> stats() {
+    seastar::future<cache_stats> stats() {
         return _peers.map_reduce(adder<cache_stats>(), &cache::stats);
     }
 
     // The caller must keep @key live until the resulting future resolves.
-    future<std::pair<item_ptr, bool>> incr(item_key& key, uint64_t delta) {
+    seastar::future<std::pair<item_ptr, bool>> incr(item_key& key, uint64_t delta) {
         auto cpu = get_cpu(key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<std::pair<item_ptr, bool>>(
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<std::pair<item_ptr, bool>>(
                 _peers.local().incr<local_origin_tag>(key, delta));
         }
         return _peers.invoke_on(cpu, &cache::incr<remote_origin_tag>, std::ref(key), std::move(delta));
     }
 
     // The caller must keep @key live until the resulting future resolves.
-    future<std::pair<item_ptr, bool>> decr(item_key& key, uint64_t delta) {
+    seastar::future<std::pair<item_ptr, bool>> decr(item_key& key, uint64_t delta) {
         auto cpu = get_cpu(key);
-        if (this_shard_id() == cpu) {
-            return make_ready_future<std::pair<item_ptr, bool>>(
+        if (seastar::this_shard_id() == cpu) {
+            return seastar::make_ready_future<std::pair<item_ptr, bool>>(
                 _peers.local().decr(key, delta));
         }
         return _peers.invoke_on(cpu, &cache::decr<remote_origin_tag>, std::ref(key), std::move(delta));
     }
 
-    future<> print_hash_stats(output_stream<char>& out) {
-        return _peers.map_reduce([&out] (std::pair<unsigned, foreign_ptr<lw_shared_ptr<std::string>>> data) mutable {
+    seastar::future<> print_hash_stats(output_stream<char>& out) {
+        return _peers.map_reduce([&out] (std::pair<unsigned, foreign_ptr<seastar::lw_shared_ptr<std::string>>> data) mutable {
             return out.write("=== CPU " + std::to_string(data.first) + " ===\r\n")
                 .then([&out, str = std::move(data.second)] {
                     return out.write(*str);
@@ -860,14 +859,14 @@ public:
         _cmd_flush += other._cmd_flush;
         _start_time = std::min(_start_time, other._start_time);
     }
-    future<> stop() { return make_ready_future<>(); }
+    seastar::future<> stop() { return seastar::make_ready_future<>(); }
 };
 
 class ascii_protocol {
 private:
     using this_type = ascii_protocol;
     sharded_cache& _cache;
-    distributed<system_stats>& _system_stats;
+    seastar::distributed<system_stats>& _system_stats;
     memcache_ascii_parser _parser;
     item_key _item_key;
     item_insertion_data _insertion;
@@ -910,10 +909,10 @@ private:
     }
 
     template <bool WithVersion>
-    future<> handle_get(output_stream<char>& out) {
+    seastar::future<> handle_get(output_stream<char>& out) {
         _system_stats.local()._cmd_get++;
         if (_parser._keys.size() == 1) {
-            return _cache.get(_parser._keys[0]).then([&out] (auto item) -> future<> {
+            return _cache.get(_parser._keys[0]).then([&out] (auto item) -> seastar::future<> {
                 scattered_message<char> msg;
                 this_type::append_item<WithVersion>(msg, std::move(item));
                 msg.append_static(msg_end);
@@ -937,7 +936,7 @@ private:
     }
 
     template <typename Value>
-    static future<> print_stat(output_stream<char>& out, const char* key, Value value) {
+    static seastar::future<> print_stat(output_stream<char>& out, const char* key, Value value) {
         return out.write(msg_stat)
                 .then([&out, key] { return out.write(key); })
                 .then([&out] { return out.write(" "); })
@@ -945,10 +944,10 @@ private:
                 .then([&out] { return out.write(msg_crlf); });
     }
 
-    future<> print_stats(output_stream<char>& out) {
+    seastar::future<> print_stats(output_stream<char>& out) {
         return _cache.stats().then([this, &out] (auto stats) {
             return _system_stats.map_reduce(adder<system_stats>(), &system_stats::self)
-                .then([&out, all_cache_stats = std::move(stats)] (auto all_system_stats) -> future<> {
+                .then([&out, all_cache_stats = std::move(stats)] (auto all_system_stats) -> seastar::future<> {
                     auto now = clock_type::now();
                     auto total_items = all_cache_stats._set_replaces + all_cache_stats._set_adds
                         + all_cache_stats._cas_hits;
@@ -1028,7 +1027,7 @@ private:
         });
     }
 public:
-    ascii_protocol(sharded_cache& cache, distributed<system_stats>& system_stats)
+    ascii_protocol(sharded_cache& cache, seastar::distributed<system_stats>& system_stats)
         : _cache(cache)
         , _system_stats(system_stats)
     {}
@@ -1042,12 +1041,12 @@ public:
         };
     }
 
-    future<> handle(input_stream<char>& in, output_stream<char>& out) {
+    seastar::future<> handle(input_stream<char>& in, output_stream<char>& out) {
         _parser.init();
-        return in.consume(_parser).then([this, &out] () -> future<> {
+        return in.consume(_parser).then([this, &out] () -> seastar::future<> {
             switch (_parser._state) {
                 case memcache_ascii_parser::state::eof:
-                    return make_ready_future<>();
+                    return seastar::make_ready_future<>();
 
                 case memcache_ascii_parser::state::error:
                     return out.write(msg_error);
@@ -1204,18 +1203,18 @@ public:
                 }
             };
             std::abort();
-        }).then_wrapped([this, &out] (auto&& f) -> future<> {
+        }).then_wrapped([this, &out] (auto&& f) -> seastar::future<> {
             // FIXME: then_wrapped() being scheduled even though no exception was triggered has a
             // performance cost of about 2.6%. Not using it means maintainability penalty.
             try {
                 f.get();
             } catch (std::bad_alloc& e) {
                 if (_parser._noreply) {
-                    return make_ready_future<>();
+                    return seastar::make_ready_future<>();
                 }
                 return out.write(msg_out_of_memory);
             }
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
     };
 };
@@ -1224,9 +1223,9 @@ class udp_server {
 public:
     static const size_t default_max_datagram_size = 1400;
 private:
-    std::optional<future<>> _task;
+    std::optional<seastar::future<>> _task;
     sharded_cache& _cache;
-    distributed<system_stats>& _system_stats;
+    seastar::distributed<system_stats>& _system_stats;
     udp_channel _chan;
     uint16_t _port;
     size_t _max_datagram_size = default_max_datagram_size;
@@ -1258,7 +1257,7 @@ private:
         }
 
         connection(ipv4_addr src, uint16_t request_id, input_stream<char>&& in, size_t out_size,
-                sharded_cache& c, distributed<system_stats>& system_stats)
+                sharded_cache& c, seastar::distributed<system_stats>& system_stats)
             : _src(src)
             , _request_id(request_id)
             , _in(std::move(in))
@@ -1266,7 +1265,7 @@ private:
             , _proto(c, system_stats)
         {}
 
-        future<> respond(udp_channel& chan) {
+        seastar::future<> respond(udp_channel& chan) {
             int i = 0;
             return do_for_each(_out_bufs.begin(), _out_bufs.end(), [this, i, &chan] (packet& p) mutable {
                 header* out_hdr = p.prepend_header<header>(0);
@@ -1280,7 +1279,7 @@ private:
     };
 
 public:
-    udp_server(sharded_cache& c, distributed<system_stats>& system_stats, uint16_t port = 11211)
+    udp_server(sharded_cache& c, seastar::distributed<system_stats>& system_stats, uint16_t port = 11211)
          : _cache(c)
          , _system_stats(system_stats)
          , _port(port)
@@ -1298,7 +1297,7 @@ public:
                 packet& p = dgram.get_data();
                 if (p.len() < sizeof(header)) {
                     // dropping invalid packet
-                    return make_ready_future<>();
+                    return seastar::make_ready_future<>();
                 }
 
                 header hdr = ntoh(*p.get_header<header>());
@@ -1306,7 +1305,7 @@ public:
 
                 auto request_id = hdr._request_id;
                 auto in = as_input_stream(std::move(p));
-                auto conn = make_lw_shared<connection>(dgram.get_src(), request_id, std::move(in),
+                auto conn = seastar::make_lw_shared<connection>(dgram.get_src(), request_id, std::move(in),
                     _max_datagram_size - sizeof(header), _cache, _system_stats);
 
                 if (hdr._n != 1 || hdr._sequence_number != 0) {
@@ -1326,7 +1325,7 @@ public:
         });
     };
 
-    future<> stop() {
+    seastar::future<> stop() {
         _chan.shutdown_input();
         _chan.shutdown_output();
         return _task->handle_exception([](std::exception_ptr e) {
@@ -1337,19 +1336,19 @@ public:
 
 class tcp_server {
 private:
-    std::optional<future<>> _task;
-    lw_shared_ptr<seastar::server_socket> _listener;
+    std::optional<seastar::future<>> _task;
+    seastar::lw_shared_ptr<seastar::server_socket> _listener;
     sharded_cache& _cache;
-    distributed<system_stats>& _system_stats;
+    seastar::distributed<system_stats>& _system_stats;
     uint16_t _port;
     struct connection {
-        connected_socket _socket;
-        socket_address _addr;
+        seastar::connected_socket _socket;
+        seastar::socket_address _addr;
         input_stream<char> _in;
         output_stream<char> _out;
         ascii_protocol _proto;
-        distributed<system_stats>& _system_stats;
-        connection(connected_socket&& socket, socket_address addr, sharded_cache& c, distributed<system_stats>& system_stats)
+        seastar::distributed<system_stats>& _system_stats;
+        connection(seastar::connected_socket&& socket, seastar::socket_address addr, sharded_cache& c, seastar::distributed<system_stats>& system_stats)
             : _socket(std::move(socket))
             , _addr(addr)
             , _in(_socket.input())
@@ -1365,22 +1364,22 @@ private:
         }
     };
 public:
-    tcp_server(sharded_cache& cache, distributed<system_stats>& system_stats, uint16_t port = 11211)
+    tcp_server(sharded_cache& cache, seastar::distributed<system_stats>& system_stats, uint16_t port = 11211)
         : _cache(cache)
         , _system_stats(system_stats)
         , _port(port)
     {}
 
     void start() {
-        listen_options lo;
+        seastar::listen_options lo;
         lo.reuse_address = true;
-        _listener = make_lw_shared<seastar::server_socket>(seastar::listen(make_ipv4_address({_port}), lo));
+        _listener = seastar::make_lw_shared<seastar::server_socket>(seastar::listen(seastar::make_ipv4_address({_port}), lo));
         // Run in the background until eof has reached on the input connection.
         _task = keep_doing([this] {
-            return _listener->accept().then([this] (accept_result ar) mutable {
-                connected_socket fd = std::move(ar.connection);
-                socket_address addr = std::move(ar.remote_address);
-                auto conn = make_lw_shared<connection>(std::move(fd), addr, _cache, _system_stats);
+            return _listener->accept().then([this] (seastar::accept_result ar) mutable {
+                seastar::connected_socket fd = std::move(ar.connection);
+                seastar::socket_address addr = std::move(ar.remote_address);
+                auto conn = seastar::make_lw_shared<connection>(std::move(fd), addr, _cache, _system_stats);
                 (void)do_until([conn] { return conn->_in.eof(); }, [conn] {
                     return conn->_proto.handle(conn->_in, conn->_out).then([conn] {
                         return conn->_out.flush();
@@ -1392,7 +1391,7 @@ public:
         });
     }
 
-    future<> stop() {
+    seastar::future<> stop() {
         _listener->abort_accept();
         return _task->handle_exception([](std::exception_ptr e) {
             std::cerr << "exception in tcp_server " << e << '\n';
@@ -1402,7 +1401,7 @@ public:
 
 class stats_printer {
 private:
-    timer<> _timer;
+    seastar::timer<> _timer;
     sharded_cache& _cache;
 public:
     stats_printer(sharded_cache& cache)
@@ -1425,21 +1424,21 @@ public:
         _timer.arm_periodic(std::chrono::seconds(1));
     }
 
-    future<> stop() { return make_ready_future<>(); }
+    seastar::future<> stop() { return seastar::make_ready_future<>(); }
 };
 
 } /* namespace memcache */
 
 int main(int ac, char** av) {
-    distributed<memcache::cache> cache_peers;
+    seastar::distributed<memcache::cache> cache_peers;
     memcache::sharded_cache cache(cache_peers);
-    distributed<memcache::system_stats> system_stats;
-    distributed<memcache::udp_server> udp_server;
-    distributed<memcache::tcp_server> tcp_server;
+    seastar::distributed<memcache::system_stats> system_stats;
+    seastar::distributed<memcache::udp_server> udp_server;
+    seastar::distributed<memcache::tcp_server> tcp_server;
     memcache::stats_printer stats(cache);
 
     namespace bpo = boost::program_options;
-    app_template app;
+    seastar::app_template app;
     app.add_options()
         ("max-datagram-size", bpo::value<int>()->default_value(memcache::udp_server::default_max_datagram_size),
              "Maximum size of UDP datagram")
@@ -1467,13 +1466,13 @@ int main(int ac, char** av) {
             return system_stats.start(memcache::clock_type::now());
         }).then([&] {
             std::cout << PLATFORM << " memcached " << VERSION << "\n";
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         }).then([&, port] {
             return tcp_server.start(std::ref(cache), std::ref(system_stats), port);
         }).then([&tcp_server] {
             return tcp_server.invoke_on_all(&memcache::tcp_server::start);
         }).then([&, port] {
-            if (engine().net().has_per_core_namespace()) {
+            if (seastar::engine().net().has_per_core_namespace()) {
                 return udp_server.start(std::ref(cache), std::ref(system_stats), port);
             } else {
                 return udp_server.start_single(std::ref(cache), std::ref(system_stats), port);

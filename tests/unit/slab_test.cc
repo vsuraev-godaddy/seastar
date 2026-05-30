@@ -25,7 +25,6 @@
 #include <seastar/core/slab.hh>
 #include <seastar/util/assert.hh>
 
-using namespace seastar;
 
 namespace bi = boost::intrusive;
 

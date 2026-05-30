@@ -36,7 +36,6 @@
 
 #ifndef SEASTAR_DEBUG
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 static seastar::logger testlog("testlog");
@@ -51,14 +50,14 @@ public:
      * Also resets the reported stalls counter to zero, so the next backtraces will not be supressed.
      */
     temporary_stall_detector_settings(std::chrono::duration<double> threshold, std::function<void ()> report = {})
-            : _old_threshold(engine().get_blocked_reactor_notify_ms())
+            : _old_threshold(seastar::engine().get_blocked_reactor_notify_ms())
             , _old_report(reactor::test::get_stall_detector_report_function()) {
-        engine().update_blocked_reactor_notify_ms(std::chrono::duration_cast<std::chrono::milliseconds>(threshold));
+        seastar::engine().update_blocked_reactor_notify_ms(std::chrono::duration_cast<std::chrono::milliseconds>(threshold));
         reactor::test::set_stall_detector_report_function(std::move(report));
     }
 
     ~temporary_stall_detector_settings() {
-        engine().update_blocked_reactor_notify_ms(_old_threshold);
+        seastar::engine().update_blocked_reactor_notify_ms(_old_threshold);
         reactor::test::set_stall_detector_report_function(std::move(_old_report));
     }
 };
@@ -116,7 +115,7 @@ SEASTAR_THREAD_TEST_CASE(no_poll_no_stall) {
     temporary_stall_detector_settings tsds(10ms, [&] { ++reports; });
     spin_some_cooperatively(1ms); // need to yield so that stall detector change from above take effect
     static constexpr unsigned tasks = 2000;
-    promise<> p;
+    seastar::promise<> p;
     auto f = p.get_future();
     parallel_for_each(std::views::iota(0u, tasks), [&p] (unsigned int i) {
         (void)yield().then([i, &p] {
@@ -125,7 +124,7 @@ SEASTAR_THREAD_TEST_CASE(no_poll_no_stall) {
                 p.set_value();
             }
         });
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }).get();
     f.get();
     BOOST_REQUIRE_EQUAL(reports, 0);

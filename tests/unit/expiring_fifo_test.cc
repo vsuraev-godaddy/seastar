@@ -27,7 +27,6 @@
 #include <seastar/util/later.hh>
 #include <boost/range/irange.hpp>
 
-using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_TEST_CASE(test_no_expiry_operations) {
@@ -72,7 +71,7 @@ SEASTAR_TEST_CASE(test_no_expiry_operations) {
     BOOST_REQUIRE_EQUAL(fifo.size(), 0u);
     BOOST_REQUIRE(!bool(fifo));
 
-    return make_ready_future<>();
+    return seastar::make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(test_expiry_operations) {

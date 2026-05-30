@@ -26,7 +26,6 @@
 #include <seastar/core/checked_ptr.hh>
 #include <seastar/core/weak_ptr.hh>
 
-using namespace seastar;
 
 static_assert(std::is_nothrow_default_constructible_v<checked_ptr<int*>>);
 static_assert(std::is_nothrow_move_constructible_v<checked_ptr<int*>>);
