@@ -151,21 +151,21 @@ list(APPEND dpdk_dependencies ${libarchive_PC_LIBRARIES})
 
 # The AF_XDP PMD links against libxdp and libbpf (and their transitive deps)
 # which are not DPDK libraries and are not tracked in rte_libs.
-foreach (_xdp_dep xdp bpf)
-  find_library (_xdp_dep_${_xdp_dep}_LIBRARY
-    NAMES lib${_xdp_dep}.a
-    HINTS
-      ${dpdk_PC_STATIC_LIBRARY_DIRS}
-      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/install/lib
-      # Fallback: build dirs when install step didn't run
-      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/xdp-tools/lib/libxdp
-      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/libbpf/src)
-  if (_xdp_dep_${_xdp_dep}_LIBRARY)
-    list (APPEND dpdk_dependencies ${_xdp_dep_${_xdp_dep}_LIBRARY})
-  endif ()
-endforeach ()
+#foreach (_xdp_dep xdp bpf)
+#  find_library (_xdp_dep_${_xdp_dep}_LIBRARY
+#    NAMES lib${_xdp_dep}.a
+#    HINTS
+#      ${dpdk_PC_STATIC_LIBRARY_DIRS}
+#      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/install/lib
+#      # Fallback: build dirs when install step didn't run
+#      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/xdp-tools/lib/libxdp
+#      ${CMAKE_CURRENT_LIST_DIR}/../../xdp-tutorial/lib/libbpf/src)
+#  if (_xdp_dep_${_xdp_dep}_LIBRARY)
+#    list (APPEND dpdk_dependencies ${_xdp_dep_${_xdp_dep}_LIBRARY})
+#  endif ()
+#endforeach ()
 # libbpf.a requires libelf and libz at link time
-list (APPEND dpdk_dependencies elf z)
+#list (APPEND dpdk_dependencies elf z)
 
 if (dpdk_FOUND AND NOT (TARGET dpdk))
   get_filename_component (library_suffix "${dpdk_EAL_LIBRARY}" LAST_EXT)
