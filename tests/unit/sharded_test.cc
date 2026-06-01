@@ -28,20 +28,21 @@
 
 #include <ranges>
 
+using namespace seastar;
 
 namespace {
 class invoke_on_during_stop final : public peering_sharded_service<invoke_on_during_stop> {
     bool flag = false;
 
 public:
-    seastar::future<> stop() {
+    future<> stop() {
         return container().invoke_on(0, [] (invoke_on_during_stop& instance) {
             instance.flag = true;
         });
     }
 
     ~invoke_on_during_stop() {
-        if (seastar::this_shard_id() == 0) {
+        if (this_shard_id() == 0) {
             SEASTAR_ASSERT(flag);
         }
     }
@@ -56,37 +57,37 @@ SEASTAR_THREAD_TEST_CASE(invoke_on_during_stop_test) {
 
 class peering_counter : public peering_sharded_service<peering_counter> {
 public:
-    seastar::future<int> count() const {
+    future<int> count() const {
         return container().map_reduce(adder<int>(), [] (auto& pc) { return 1; });
     }
 
-    seastar::future<int> count_from(int base) const {
+    future<int> count_from(int base) const {
         return container().map_reduce0([] (auto& pc) { return 1; }, base, std::plus<int>());
     }
 
-    seastar::future<int> count_from_const(int base) const {
+    future<int> count_from_const(int base) const {
         return container().map_reduce0(&peering_counter::get_1_c, base, std::plus<int>());
     }
 
-    seastar::future<int> count_from_mutate(int base) {
+    future<int> count_from_mutate(int base) {
         return container().map_reduce0(&peering_counter::get_1_m, base, std::plus<int>());
     }
 
-    seastar::future<int> count_const() const {
+    future<int> count_const() const {
         return container().map_reduce(adder<int>(), &peering_counter::get_1_c);
     }
 
-    seastar::future<int> count_mutate() {
+    future<int> count_mutate() {
         return container().map_reduce(adder<int>(), &peering_counter::get_1_m);
     }
 
 private:
-    seastar::future<int> get_1_c() const {
-        return seastar::make_ready_future<int>(1);
+    future<int> get_1_c() const {
+        return make_ready_future<int>(1);
     }
 
-    seastar::future<int> get_1_m() {
-        return seastar::make_ready_future<int>(1);
+    future<int> get_1_m() {
+        return make_ready_future<int>(1);
     }
 };
 
@@ -114,8 +115,8 @@ SEASTAR_THREAD_TEST_CASE(test_member_map_reduces) {
 class mydata {
 public:
     int x = 1;
-    seastar::future<> stop() {
-        return seastar::make_ready_future<>();
+    future<> stop() {
+        return make_ready_future<>();
     }
 };
 
@@ -136,7 +137,7 @@ SEASTAR_THREAD_TEST_CASE(invoke_map_returns_future_value) {
     seastar::sharded<mydata> s;
     s.start().get();
     s.map([] (mydata& m) {
-        return seastar::make_ready_future<int>(m.x);
+        return make_ready_future<int>(m.x);
     }).then([] (std::vector<int> results) {
         for (auto& x : results) {
             SEASTAR_ASSERT(x == 1);
@@ -173,22 +174,22 @@ SEASTAR_THREAD_TEST_CASE(failed_sharded_start_doesnt_hang) {
 class argument {
     int _x;
 public:
-    argument() : _x(seastar::this_shard_id()) {}
+    argument() : _x(this_shard_id()) {}
     int get() const { return _x; }
 };
 
 class service {
 public:
     void fn_local(argument& arg) {
-        BOOST_REQUIRE_EQUAL(arg.get(), seastar::this_shard_id());
+        BOOST_REQUIRE_EQUAL(arg.get(), this_shard_id());
     }
 
     void fn_sharded(sharded<argument>& arg) {
-        BOOST_REQUIRE_EQUAL(arg.local().get(), seastar::this_shard_id());
+        BOOST_REQUIRE_EQUAL(arg.local().get(), this_shard_id());
     }
 
     void fn_sharded_param(int arg) {
-        BOOST_REQUIRE_EQUAL(arg, seastar::this_shard_id());
+        BOOST_REQUIRE_EQUAL(arg, this_shard_id());
     }
 };
 
@@ -209,8 +210,8 @@ SEASTAR_THREAD_TEST_CASE(invoke_on_all_sharded_arg) {
 SEASTAR_THREAD_TEST_CASE(invoke_on_modifiers) {
     class checker {
     public:
-        seastar::future<> fn(int a) {
-            return seastar::make_ready_future<>();
+        future<> fn(int a) {
+            return make_ready_future<>();
         }
     };
 
@@ -233,21 +234,21 @@ class coordinator_synced_shard_map : public peering_sharded_service<coordinator_
 public:
     coordinator_synced_shard_map(unsigned coordinator_id) : unsigned_per_shard(smp::count), coordinator_id(coordinator_id) {}
 
-    seastar::future<> sync(unsigned value) {
-        return container().invoke_on(coordinator_id, [shard_id = seastar::this_shard_id(), value] (coordinator_synced_shard_map& s) {
+    future<> sync(unsigned value) {
+        return container().invoke_on(coordinator_id, [shard_id = this_shard_id(), value] (coordinator_synced_shard_map& s) {
             s.unsigned_per_shard[shard_id] = value;
         });
     }
 
     unsigned get_synced(int shard_id) {
-        SEASTAR_ASSERT(seastar::this_shard_id() == coordinator_id);
+        SEASTAR_ASSERT(this_shard_id() == coordinator_id);
         return unsigned_per_shard[shard_id];
     }
 };
 
 SEASTAR_THREAD_TEST_CASE(invoke_on_range_contiguous) {
     sharded<coordinator_synced_shard_map> s;
-    auto coordinator_id = seastar::this_shard_id();
+    auto coordinator_id = this_shard_id();
     s.start(coordinator_id).get();
 
     auto mid = smp::count / 2;
@@ -276,7 +277,7 @@ SEASTAR_THREAD_TEST_CASE(invoke_on_range_contiguous) {
 
 SEASTAR_THREAD_TEST_CASE(invoke_on_range_fragmented) {
     sharded<coordinator_synced_shard_map> s;
-    auto coordinator_id = seastar::this_shard_id();
+    auto coordinator_id = this_shard_id();
     s.start(coordinator_id).get();
 
     // TODO: migrate to C++23 std::views::stride

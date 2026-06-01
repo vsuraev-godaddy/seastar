@@ -35,10 +35,11 @@
 
 #include <valgrind/valgrind.h>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_TEST_CASE(test_thread_1) {
-    return seastar::do_with(seastar::sstring(), [] (seastar::sstring& x) {
+    return do_with(sstring(), [] (sstring& x) {
         auto t1 = new thread([&x] {
             x = "abc";
         });
@@ -52,8 +53,8 @@ SEASTAR_TEST_CASE(test_thread_1) {
 SEASTAR_TEST_CASE(test_thread_2) {
     struct tmp {
         std::vector<thread> threads;
-        seastar::semaphore sem1{0};
-        seastar::semaphore sem2{0};
+        semaphore sem1{0};
+        semaphore sem2{0};
         int counter = 0;
         void thread_fn() {
             sem1.wait(1).get();
@@ -61,7 +62,7 @@ SEASTAR_TEST_CASE(test_thread_2) {
             sem2.signal(1);
         }
     };
-    return seastar::do_with(tmp(), [] (tmp& x) {
+    return do_with(tmp(), [] (tmp& x) {
         auto n = 10;
         for (int i = 0; i < n; ++i) {
             x.threads.emplace_back(std::bind(&tmp::thread_fn, &x));
@@ -76,13 +77,13 @@ SEASTAR_TEST_CASE(test_thread_2) {
 }
 
 SEASTAR_TEST_CASE(test_thread_async) {
-    seastar::sstring x = "x";
-    seastar::sstring y = "y";
-    auto concat = [] (seastar::sstring x, seastar::sstring y) {
+    sstring x = "x";
+    sstring y = "y";
+    auto concat = [] (sstring x, sstring y) {
         sleep(10ms).get();
         return x + y;
     };
-    return async(concat, x, y).then([] (seastar::sstring xy) {
+    return async(concat, x, y).then([] (sstring xy) {
         BOOST_REQUIRE_EQUAL(xy, "xy");
     });
 }
@@ -153,15 +154,15 @@ SEASTAR_THREAD_TEST_CASE(abc, *boost::unit_test::expected_failures(2)) {
 }
 
 SEASTAR_TEST_CASE(test_thread_custom_stack_size) {
-    seastar::sstring x = "x";
-    seastar::sstring y = "y";
-    auto concat = [] (seastar::sstring x, seastar::sstring y) {
+    sstring x = "x";
+    sstring y = "y";
+    auto concat = [] (sstring x, sstring y) {
         sleep(10ms).get();
         return x + y;
     };
     thread_attributes attr;
     attr.stack_size = 16384;
-    return async(attr, concat, x, y).then([] (seastar::sstring xy) {
+    return async(attr, concat, x, y).then([] (sstring xy) {
         BOOST_REQUIRE_EQUAL(xy, "xy");
     });
 }
@@ -215,11 +216,11 @@ static void bypass_stack_guard(int sig, siginfo_t* si, void* ctx) {
 // around 10KiB of data, and the stack guard resides after 128'th KiB.
 seastar::future<> test_thread_custom_stack_size_failure::run_test_case() const {
     if (RUNNING_ON_VALGRIND) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
-    seastar::sstring x = "x";
-    seastar::sstring y = "y";
+    sstring x = "x";
+    sstring y = "y";
 
     // Catch segmentation fault once:
     struct sigaction sa{};
@@ -230,7 +231,7 @@ seastar::future<> test_thread_custom_stack_size_failure::run_test_case() const {
         throw std::system_error(ret, std::system_category());
     }
 
-    auto concat = [] (seastar::sstring x, seastar::sstring y) {
+    auto concat = [] (sstring x, sstring y) {
         sleep(10ms).get();
         // Probe the stack by writing to it in intervals of 1024,
         // until we hit a write fault. In order not to ruin anything,
@@ -246,7 +247,7 @@ seastar::future<> test_thread_custom_stack_size_failure::run_test_case() const {
     };
     thread_attributes attr;
     attr.stack_size = 16384;
-    return async(attr, concat, x, y).then([] (seastar::sstring xy) {
+    return async(attr, concat, x, y).then([] (sstring xy) {
         BOOST_REQUIRE_EQUAL(xy, "xy");
         BOOST_REQUIRE(stack_guard_bypassed);
         auto ret = sigaction(SIGSEGV, &default_old_sigsegv_handler, nullptr);
@@ -256,7 +257,7 @@ seastar::future<> test_thread_custom_stack_size_failure::run_test_case() const {
     }).then([concat, x, y] {
         // The same function with a default stack will not trigger
         // a segfault, because its stack is much bigger than 10KiB
-        return async(concat, x, y).then([] (seastar::sstring xy) {
+        return async(concat, x, y).then([] (sstring xy) {
             BOOST_REQUIRE_EQUAL(xy, "xy");
         });
     });

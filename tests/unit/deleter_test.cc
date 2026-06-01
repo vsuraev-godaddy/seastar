@@ -24,6 +24,7 @@
 #include <boost/test/unit_test.hpp>
 #include <seastar/core/deleter.hh>
 
+using namespace seastar;
 
 struct TestObject {
       TestObject() : has_ref(true){}

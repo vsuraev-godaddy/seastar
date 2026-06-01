@@ -38,15 +38,16 @@
 
 namespace bpo = boost::program_options;
 
+using namespace seastar;
 using namespace httpd;
 
 class handl : public httpd::handler_base {
 public:
-    virtual seastar::future<std::unique_ptr<http::reply> > handle(const seastar::sstring& path,
+    virtual future<std::unique_ptr<http::reply> > handle(const sstring& path,
             std::unique_ptr<http::request> req, std::unique_ptr<http::reply> rep) {
         rep->_content = "hello";
         rep->done("html");
-        return seastar::make_ready_future<std::unique_ptr<http::reply>>(std::move(rep));
+        return make_ready_future<std::unique_ptr<http::reply>>(std::move(rep));
     }
 };
 
@@ -55,7 +56,7 @@ void set_routes(routes& r) {
         return "hello";
     });
     function_handler* h2 = new function_handler([](std::unique_ptr<http::request> req) {
-        return seastar::make_ready_future<json::json_return_type>("json-future");
+        return make_ready_future<json::json_return_type>("json-future");
     });
     r.add(operation_type::GET, url("/"), h1);
     r.add(operation_type::GET, url("/jf"), h2);
@@ -73,12 +74,12 @@ void set_routes(routes& r) {
 }
 
 int main(int ac, char** av) {
-    seastar::app_template app;
+    app_template app;
 
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "HTTP Server port");
     app.add_options()("prometheus_port", bpo::value<uint16_t>()->default_value(9180), "Prometheus port. Set to zero in order to disable.");
-    app.add_options()("prometheus_address", bpo::value<seastar::sstring>()->default_value("0.0.0.0"), "Prometheus address");
-    app.add_options()("prometheus_prefix", bpo::value<seastar::sstring>()->default_value("seastar_httpd"), "Prometheus metrics prefix");
+    app.add_options()("prometheus_address", bpo::value<sstring>()->default_value("0.0.0.0"), "Prometheus address");
+    app.add_options()("prometheus_prefix", bpo::value<sstring>()->default_value("seastar_httpd"), "Prometheus metrics prefix");
 
     return app.run(ac, av, [&] {
         return seastar::async([&] {
@@ -87,7 +88,7 @@ int main(int ac, char** av) {
             httpd::http_server_control prometheus_server;
             bool prometheus_started = false;
 
-            auto stop_prometheus = seastar::defer([&] () noexcept {
+            auto stop_prometheus = defer([&] () noexcept {
                 if (prometheus_started) {
                     std::cout << "Stoppping Prometheus server" << std::endl;  // This can throw, but won't.
                     prometheus_server.stop().get();
@@ -97,10 +98,10 @@ int main(int ac, char** av) {
             uint16_t pport = config["prometheus_port"].as<uint16_t>();
             if (pport) {
                 prometheus::config pctx;
-                seastar::net::inet_address prom_addr(config["prometheus_address"].as<seastar::sstring>());
+                net::inet_address prom_addr(config["prometheus_address"].as<sstring>());
 
                 pctx.metric_help = "seastar::httpd server statistics";
-                pctx.prefix = config["prometheus_prefix"].as<seastar::sstring>();
+                pctx.prefix = config["prometheus_prefix"].as<sstring>();
 
                 std::cout << "starting prometheus API server" << std::endl;
                 prometheus_server.start("prometheus").get();
@@ -109,7 +110,7 @@ int main(int ac, char** av) {
 
                 prometheus_started = true;
 
-                prometheus_server.listen(seastar::socket_address{prom_addr, pport}).handle_exception([prom_addr, pport] (auto ep) {
+                prometheus_server.listen(socket_address{prom_addr, pport}).handle_exception([prom_addr, pport] (auto ep) {
                     std::cerr << seastar::format("Could not start Prometheus API server on {}:{}: {}\n", prom_addr, pport, ep);
                     return make_exception_future<>(ep);
                 }).get();
@@ -121,7 +122,7 @@ int main(int ac, char** av) {
             auto rb = make_shared<api_registry_builder>("apps/httpd/");
             server->start().get();
 
-            auto stop_server = seastar::defer([&] () noexcept {
+            auto stop_server = defer([&] () noexcept {
                 std::cout << "Stoppping HTTP server" << std::endl; // This can throw, but won't.
                 server->stop().get();
             });

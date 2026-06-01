@@ -30,10 +30,11 @@
 #include <seastar/testing/thread_test_case.hh>
 #include <vector>
 
+using namespace seastar;
 using namespace net;
 
-static seastar::sstring to_sstring(const packet& p) {
-    seastar::sstring res = uninitialized_string(p.len());
+static sstring to_sstring(const packet& p) {
+    sstring res = uninitialized_string(p.len());
     auto i = res.begin();
     for (auto& frag : p.fragments()) {
         i = std::copy(frag.base, frag.base + frag.size, i);
@@ -55,18 +56,18 @@ struct stream_maker {
         return std::move(*this);
     }
 
-    seastar::lw_shared_ptr<output_stream<char>> operator()(data_sink sink) {
-        return seastar::make_lw_shared<output_stream<char>>(std::move(sink), _size, opts);
+    lw_shared_ptr<output_stream<char>> operator()(data_sink sink) {
+        return make_lw_shared<output_stream<char>>(std::move(sink), _size, opts);
     }
 };
 
 template <typename T, typename StreamConstructor>
-seastar::future<> assert_split(StreamConstructor stream_maker, std::initializer_list<T> write_calls,
+future<> assert_split(StreamConstructor stream_maker, std::initializer_list<T> write_calls,
         std::vector<std::string> expected_split) {
     static int i = 0;
     BOOST_TEST_MESSAGE("checking split: " << i++);
-    auto sh_write_calls = seastar::make_lw_shared<std::vector<T>>(std::move(write_calls));
-    auto sh_expected_splits = seastar::make_lw_shared<std::vector<std::string>>(std::move(expected_split));
+    auto sh_write_calls = make_lw_shared<std::vector<T>>(std::move(write_calls));
+    auto sh_expected_splits = make_lw_shared<std::vector<std::string>>(std::move(expected_split));
     auto v = make_shared<std::vector<packet>>();
     auto out = stream_maker(data_sink(std::make_unique<vector_data_sink>(*v)));
 
@@ -131,28 +132,28 @@ SEASTAR_TEST_CASE(test_flush_on_empty_buffer_does_not_push_empty_packet_down_str
 }
 
 SEASTAR_THREAD_TEST_CASE(test_simple_write) {
-    auto vec = std::vector<seastar::net::packet>{};
+    auto vec = std::vector<net::packet>{};
     auto out = output_stream<char>(data_sink(std::make_unique<vector_data_sink>(vec)), 8);
 
-    auto value1 = seastar::sstring("te");
+    auto value1 = sstring("te");
     out.write(value1).get();
 
 
-    auto value2 = seastar::sstring("st");
+    auto value2 = sstring("st");
     out.write(value2).get();
 
-    auto value3 = seastar::sstring("abcdefgh1234");
+    auto value3 = sstring("abcdefgh1234");
     out.write(value3).get();
 
     out.close().get();
 
     auto value = value1 + value2 + value3;
-    auto packets = seastar::net::packet{};
+    auto packets = net::packet{};
     for (auto& p : vec) {
         packets.append(std::move(p));
     }
     packets.linearize();
     auto buf = packets.release();
     BOOST_REQUIRE_EQUAL(buf.size(), 1);
-    BOOST_REQUIRE_EQUAL(seastar::sstring(buf.front().get(), buf.front().size()), value);
+    BOOST_REQUIRE_EQUAL(sstring(buf.front().get(), buf.front().size()), value);
 }

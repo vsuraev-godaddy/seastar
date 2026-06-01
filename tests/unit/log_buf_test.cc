@@ -22,6 +22,7 @@
 #include <seastar/testing/test_case.hh>
 #include <seastar/util/log.hh>
 
+using namespace seastar;
 
 SEASTAR_TEST_CASE(log_buf_realloc) {
     std::array<char, 128> external_buf;
@@ -47,7 +48,7 @@ SEASTAR_TEST_CASE(log_buf_realloc) {
         BOOST_REQUIRE_EQUAL(p[i], 'a');
     }
 
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(log_buf_insert_iterator_format_to) {
@@ -85,7 +86,7 @@ SEASTAR_TEST_CASE(log_buf_insert_iterator_format_to) {
         BOOST_REQUIRE_EQUAL(p[pos++], 'b');
     }
     BOOST_REQUIRE_EQUAL(p[pos++], '\n');
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(log_buf_clear) {
@@ -109,5 +110,5 @@ SEASTAR_TEST_CASE(log_buf_clear) {
     BOOST_CHECK_EQUAL(cap_before, buf.capacity());
     BOOST_CHECK_EQUAL(0, buf.size());
 
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }

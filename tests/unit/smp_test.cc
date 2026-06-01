@@ -24,43 +24,44 @@
 #include <seastar/core/app-template.hh>
 #include <seastar/core/print.hh>
 
+using namespace seastar;
 
-seastar::future<bool> test_smp_call() {
+future<bool> test_smp_call() {
     return smp::submit_to(1, [] {
-        return seastar::make_ready_future<int>(3);
+        return make_ready_future<int>(3);
     }).then([] (int ret) {
-        return seastar::make_ready_future<bool>(ret == 3);
+        return make_ready_future<bool>(ret == 3);
     });
 }
 
 struct nasty_exception {};
 
-seastar::future<bool> test_smp_exception() {
+future<bool> test_smp_exception() {
     fmt::print("1\n");
     return smp::submit_to(1, [] {
         fmt::print("2\n");
         auto x = make_exception_future<int>(nasty_exception());
         fmt::print("3\n");
         return x;
-    }).then_wrapped([] (seastar::future<int> result) {
+    }).then_wrapped([] (future<int> result) {
         fmt::print("4\n");
         try {
             result.get();
-            return seastar::make_ready_future<bool>(false); // expected an exception
+            return make_ready_future<bool>(false); // expected an exception
         } catch (nasty_exception&) {
             // all is well
-            return seastar::make_ready_future<bool>(true);
+            return make_ready_future<bool>(true);
         } catch (...) {
             // incorrect exception type
-            return seastar::make_ready_future<bool>(false);
+            return make_ready_future<bool>(false);
         }
     });
 }
 
 int tests, fails;
 
-seastar::future<>
-report(seastar::sstring msg, seastar::future<bool>&& result) {
+future<>
+report(sstring msg, future<bool>&& result) {
     return std::move(result).then([msg] (bool result) {
         fmt::print("{}: {}\n", (result ? "PASS" : "FAIL"), msg);
         tests += 1;
@@ -69,12 +70,12 @@ report(seastar::sstring msg, seastar::future<bool>&& result) {
 }
 
 int main(int ac, char** av) {
-    return seastar::app_template().run_deprecated(ac, av, [] {
+    return app_template().run_deprecated(ac, av, [] {
        return report("smp call", test_smp_call()).then([] {
            return report("smp exception", test_smp_exception());
        }).then([] {
            fmt::print("\n{:d} tests / {:d} failures\n", tests, fails);
-           seastar::engine().exit(fails ? 1 : 0);
+           engine().exit(fails ? 1 : 0);
        });
     });
 }

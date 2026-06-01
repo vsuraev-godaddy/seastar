@@ -29,6 +29,7 @@
 #include <seastar/util/short_streams.hh>
 #include <string>
 
+using namespace seastar;
 using namespace util;
 
 /*
@@ -43,7 +44,7 @@ public:
     test_source_impl(size_t buffer_size, size_t total_size)
         : _buffer_size(buffer_size), _remaining_size(total_size) {
     }
-    virtual seastar::future<temporary_buffer<char>> get() override {
+    virtual future<temporary_buffer<char>> get() override {
         size_t len = std::min(_buffer_size, _remaining_size);
         temporary_buffer<char> tmp(len);
         for (size_t i = 0; i < len; i++) {
@@ -51,12 +52,12 @@ public:
             ++_current_letter %= 26;
         }
         _remaining_size -= len;
-        return seastar::make_ready_future<temporary_buffer<char>>(std::move(tmp));
+        return make_ready_future<temporary_buffer<char>>(std::move(tmp));
     }
-    virtual seastar::future<temporary_buffer<char>> skip(uint64_t n) override {
+    virtual future<temporary_buffer<char>> skip(uint64_t n) override {
         _remaining_size -= std::min(_remaining_size, n);
         _current_letter += n %= 26;
-        return seastar::make_ready_future<temporary_buffer<char>>();
+        return make_ready_future<temporary_buffer<char>>();
     }
 };
 
@@ -64,7 +65,7 @@ SEASTAR_TEST_CASE(test_read_all) {
     return async([] {
         auto check_read_all = [] (input_stream<char>& strm, const char* test) {
             auto all = read_entire_stream(strm).get();
-            seastar::sstring s;
+            sstring s;
             for (auto&& buf: all) {
                 s += seastar::to_sstring(std::move(buf));
             };

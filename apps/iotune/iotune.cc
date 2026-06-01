@@ -53,6 +53,7 @@
 #include <seastar/util/std-compat.hh>
 #include <seastar/util/read_first_line.hh>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 
@@ -66,11 +67,11 @@ void check_device_properties(fs::path dev_sys_file) {
     auto sched_string = read_first_line(sched_file);
     auto beg = sched_string.find('[');
     size_t len = sched_string.size();
-    if (beg == seastar::sstring::npos) {
+    if (beg == sstring::npos) {
         beg = 0;
     } else {
         auto end = sched_string.find(']');
-        if (end != seastar::sstring::npos) {
+        if (end != sstring::npos) {
             len = end - beg - 1;
         }
         beg++;
@@ -97,7 +98,7 @@ void check_device_properties(fs::path dev_sys_file) {
 }
 
 struct evaluation_directory {
-    seastar::sstring _name;
+    sstring _name;
     // We know that if we issue more than this, they will be blocked on linux anyway.
     unsigned _max_iodepth = 0;
     unsigned _force_io_depth;
@@ -150,7 +151,7 @@ struct evaluation_directory {
         _disks_per_array = std::max(_disks_per_array, 1u);
     }
 public:
-    evaluation_directory(seastar::sstring name, unsigned force_io_depth)
+    evaluation_directory(sstring name, unsigned force_io_depth)
         : _name(name)
         , _force_io_depth(force_io_depth)
         , _available_space(fs::space(fs::path(_name)).available)
@@ -164,7 +165,7 @@ public:
         return fs::path(_name);
     }
 
-    const seastar::sstring& name() const {
+    const sstring& name() const {
         return _name;
     }
 
@@ -176,7 +177,7 @@ public:
         return _min_data_transfer_size;
     }
 
-    seastar::future<> discover_directory() {
+    future<> discover_directory() {
         return seastar::async([this] {
             auto f = open_directory(_name).get();
             auto st = f.stat().get();
@@ -295,7 +296,7 @@ public:
 
 class request_issuer {
 public:
-    virtual seastar::future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) = 0;
+    virtual future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) = 0;
     virtual ~request_issuer() {}
 };
 
@@ -304,7 +305,7 @@ class write_request_issuer : public request_issuer {
     file _file;
 public:
     explicit write_request_issuer(file f) : _file(f) {}
-    seastar::future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) override {
+    future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) override {
         return _file.dma_write(pos, buf, size);
     }
 };
@@ -313,7 +314,7 @@ class read_request_issuer : public request_issuer {
     file _file;
 public:
     explicit read_request_issuer(file f) : _file(f) {}
-    seastar::future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) override {
+    future<size_t> issue_request(uint64_t pos, char* buf, uint64_t size) override {
         return _file.dma_read(pos, buf, size);
     }
 };
@@ -323,7 +324,7 @@ class io_worker {
         std::vector<unsigned>& _rates;
         const unsigned& _requests;
         unsigned _prev_requests = 0;
-        seastar::timer<> _tick;
+        timer<> _tick;
 
         static constexpr auto period = 1s;
 
@@ -388,7 +389,7 @@ public:
         return allocate_aligned_buffer<char>(_buffer_size, _buffer_size);
     }
 
-    seastar::future<> issue_request(char* buf) {
+    future<> issue_request(char* buf) {
         uint64_t pos = _pos_impl->get_pos();
         return _req_impl->issue_request(pos, buf, _buffer_size).then([this, pos] (size_t size) {
             auto now = iotune_clock::now();
@@ -442,20 +443,20 @@ private:
 
 public:
     test_file(const ::evaluation_directory& dir, uint64_t maximum_size, uint64_t random_io_buffer_size)
-        : _dirpath(dir.path() / fs::path(fmt::format("ioqueue-discovery-{}", seastar::this_shard_id())))
+        : _dirpath(dir.path() / fs::path(fmt::format("ioqueue-discovery-{}", this_shard_id())))
         , _file_size(maximum_size)
         , _forced_random_io_buffer_size(random_io_buffer_size)
     {}
 
-    seastar::future<> create_data_file() {
+    future<> create_data_file() {
         // XFS likes access in many directories better.
         return make_directory(_dirpath.string()).then([this] {
             auto testfile = _dirpath / fs::path("testfile");
             file_open_options options;
             options.extent_allocation_size_hint = _file_size;
-            return seastar::open_file_dma(testfile.string(), seastar::open_flags::rw | seastar::open_flags::create, std::move(options)).then([this, testfile] (file file) {
+            return open_file_dma(testfile.string(), open_flags::rw | open_flags::create, std::move(options)).then([this, testfile] (file file) {
                 _file = file;
-                if (seastar::this_shard_id() == 0) {
+                if (this_shard_id() == 0) {
                     iotune_logger.info("Filesystem parameters: read alignment {}, write alignment {}", _file.disk_read_dma_alignment(), _file.disk_write_dma_alignment());
                 }
                 return remove_file(testfile.string()).then([this] {
@@ -467,7 +468,7 @@ public:
         });
     }
 
-    seastar::future<io_rates> do_workload(std::unique_ptr<io_worker> worker_ptr, unsigned max_os_concurrency, bool update_file_size = false) {
+    future<io_rates> do_workload(std::unique_ptr<io_worker> worker_ptr, unsigned max_os_concurrency, bool update_file_size = false) {
         if (update_file_size) {
             _file_size = 0;
         }
@@ -480,7 +481,7 @@ public:
             return do_until([worker] { return worker->should_stop(); }, [buf, worker] {
                 return worker->issue_request(buf);
             }).finally([alive = std::move(bufptr)] {});
-        }).then_wrapped([this, worker = std::move(worker_ptr), update_file_size] (seastar::future<> f) {
+        }).then_wrapped([this, worker = std::move(worker_ptr), update_file_size] (future<> f) {
             try {
                 f.get();
             } catch (invalid_position& ip) {
@@ -493,29 +494,29 @@ public:
             if (update_file_size) {
                 _file_size = worker->max_offset();
             }
-            return seastar::make_ready_future<io_rates>(worker->get_io_rates());
+            return make_ready_future<io_rates>(worker->get_io_rates());
         });
     }
 
-    seastar::future<io_rates> read_workload(size_t buffer_size, pattern access_pattern, unsigned max_os_concurrency, std::chrono::duration<double> duration, std::vector<unsigned>& rates) {
+    future<io_rates> read_workload(size_t buffer_size, pattern access_pattern, unsigned max_os_concurrency, std::chrono::duration<double> duration, std::vector<unsigned>& rates) {
         buffer_size = calculate_buffer_size(access_pattern, buffer_size, _file.disk_read_dma_alignment());
         auto worker = std::make_unique<io_worker>(buffer_size, duration, std::make_unique<read_request_issuer>(_file), get_position_generator(buffer_size, access_pattern), rates);
         return do_workload(std::move(worker), max_os_concurrency);
     }
 
-    seastar::future<io_rates> write_workload(size_t buffer_size, pattern access_pattern, unsigned max_os_concurrency, std::chrono::duration<double> duration, std::vector<unsigned>& rates) {
+    future<io_rates> write_workload(size_t buffer_size, pattern access_pattern, unsigned max_os_concurrency, std::chrono::duration<double> duration, std::vector<unsigned>& rates) {
         buffer_size = calculate_buffer_size(access_pattern, buffer_size, _file.disk_write_dma_alignment());
         auto worker = std::make_unique<io_worker>(buffer_size, duration, std::make_unique<write_request_issuer>(_file), get_position_generator(buffer_size, access_pattern), rates);
         bool update_file_size = worker->is_sequential();
         return do_workload(std::move(worker), max_os_concurrency, update_file_size).then([this] (io_rates r) {
             return _file.flush().then([r = std::move(r)] () mutable {
-                return seastar::make_ready_future<io_rates>(std::move(r));
+                return make_ready_future<io_rates>(std::move(r));
             });
         });
     }
 
-    seastar::future<> stop() {
-        return _file ? _file.close() : seastar::make_ready_future<>();
+    future<> stop() {
+        return _file ? _file.close() : make_ready_future<>();
     }
 };
 
@@ -525,7 +526,7 @@ class iotune_multi_shard_context {
 
     unsigned per_shard_io_depth() const {
         auto iodepth = _test_directory.max_iodepth() / smp::count;
-        if (seastar::this_shard_id() < _test_directory.max_iodepth() % smp::count) {
+        if (this_shard_id() < _test_directory.max_iodepth() % smp::count) {
             iodepth++;
         }
         return std::min(iodepth, 128u);
@@ -536,24 +537,24 @@ class iotune_multi_shard_context {
     seastar::sharded<std::vector<unsigned>> sharded_rates;
 
 public:
-    seastar::future<> stop() {
+    future<> stop() {
         return _iotune_test_file.stop().then([this] { return sharded_rates.stop(); });
     }
 
-    seastar::future<> start() {
+    future<> start() {
        const auto maximum_size = (_test_directory.available_space() / (2 * smp::count));
        return _iotune_test_file.start(_test_directory, maximum_size, _random_io_buffer_size).then([this] {
            return sharded_rates.start();
        });
     }
 
-    seastar::future<row_stats> get_serial_rates() {
+    future<row_stats> get_serial_rates() {
         row_stats ret = get_row_stats_for<unsigned>(serial_rates);
         serial_rates.clear();
-        return seastar::make_ready_future<row_stats>(ret);
+        return make_ready_future<row_stats>(ret);
     }
 
-    seastar::future<row_stats> get_sharded_worst_rates() {
+    future<row_stats> get_sharded_worst_rates() {
         return sharded_rates.map_reduce0([] (std::vector<unsigned>& rates) {
             row_stats ret = get_row_stats_for<unsigned>(rates);
             rates.clear();
@@ -564,40 +565,40 @@ public:
         });
     }
 
-    seastar::future<> create_data_file() {
+    future<> create_data_file() {
         return _iotune_test_file.invoke_on_all([] (test_file& tf) {
             return tf.create_data_file();
         });
     }
 
-    seastar::future<io_rates> write_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> write_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
         return _iotune_test_file.invoke_on(shard, [this, buffer_size, duration] (test_file& tf) {
             return tf.write_workload(buffer_size, test_file::pattern::sequential, 4 * _test_directory.disks_per_array(), duration, serial_rates);
         });
     }
 
-    seastar::future<io_rates> read_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> read_sequential_data(unsigned shard, size_t buffer_size, std::chrono::duration<double> duration) {
         return _iotune_test_file.invoke_on(shard, [this, buffer_size, duration] (test_file& tf) {
             return tf.read_workload(buffer_size, test_file::pattern::sequential, 4 * _test_directory.disks_per_array(), duration, serial_rates);
         });
     }
 
-    seastar::future<io_rates> write_random_data(size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> write_random_data(size_t buffer_size, std::chrono::duration<double> duration) {
         return _iotune_test_file.map_reduce0([buffer_size, this, duration] (test_file& tf) {
             const auto shard_io_depth = per_shard_io_depth();
             if (shard_io_depth == 0) {
-                return seastar::make_ready_future<io_rates>();
+                return make_ready_future<io_rates>();
             } else {
                 return tf.write_workload(buffer_size, test_file::pattern::random, shard_io_depth, duration, sharded_rates.local());
             }
         }, io_rates(), std::plus<io_rates>());
     }
 
-    seastar::future<io_rates> read_random_data(size_t buffer_size, std::chrono::duration<double> duration) {
+    future<io_rates> read_random_data(size_t buffer_size, std::chrono::duration<double> duration) {
         return _iotune_test_file.map_reduce0([buffer_size, this, duration] (test_file& tf) {
             const auto shard_io_depth = per_shard_io_depth();
             if (shard_io_depth == 0) {
-                return seastar::make_ready_future<io_rates>();
+                return make_ready_future<io_rates>();
             } else {
                 return tf.read_workload(buffer_size, test_file::pattern::random, shard_io_depth, duration, sharded_rates.local());
             }
@@ -606,14 +607,14 @@ public:
 
 private:
     template <typename Fn>
-    seastar::future<uint64_t> saturate(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration, Fn&& workload) {
+    future<uint64_t> saturate(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration, Fn&& workload) {
         return _iotune_test_file.invoke_on(0, [this, rate_threshold, buffer_size, duration, workload] (test_file& tf) {
             return (tf.*workload)(buffer_size, test_file::pattern::sequential, 1, duration, serial_rates).then([this, rate_threshold, buffer_size, duration, workload] (io_rates rates) {
                 serial_rates.clear();
                 if (rates.bytes_per_sec < rate_threshold) {
                     // The throughput with the given buffer-size is already "small enough", so
                     // return back its previous value
-                    return seastar::make_ready_future<uint64_t>(buffer_size * 2);
+                    return make_ready_future<uint64_t>(buffer_size * 2);
                 } else {
                     return saturate(rate_threshold, buffer_size / 2, duration, workload);
                 }
@@ -622,11 +623,11 @@ private:
     }
 
 public:
-    seastar::future<uint64_t> saturate_write(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<uint64_t> saturate_write(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration) {
         return saturate(rate_threshold, buffer_size, duration, &test_file::write_workload);
     }
 
-    seastar::future<uint64_t> saturate_read(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration) {
+    future<uint64_t> saturate_read(float rate_threshold, size_t buffer_size, std::chrono::duration<double> duration) {
         return saturate(rate_threshold, buffer_size, duration, &test_file::read_workload);
     }
 
@@ -646,7 +647,7 @@ struct disk_descriptor {
     std::optional<uint64_t> write_sat_len;
 };
 
-void string_to_file(seastar::sstring conf_file, seastar::sstring buf) {
+void string_to_file(sstring conf_file, sstring buf) {
     auto f = file_desc::open(conf_file, O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC, 0664);
     auto ret = f.write(buf.data(), buf.size());
     if (!ret || (*ret != buf.size())) {
@@ -654,8 +655,8 @@ void string_to_file(seastar::sstring conf_file, seastar::sstring buf) {
     }
 }
 
-void write_configuration_file(seastar::sstring conf_file, std::string format, seastar::sstring properties_file) {
-    seastar::sstring buf;
+void write_configuration_file(sstring conf_file, std::string format, sstring properties_file) {
+    sstring buf;
     if (format == "seastar") {
         buf = fmt::format("io-properties-file={}\n", properties_file);
     } else {
@@ -664,7 +665,7 @@ void write_configuration_file(seastar::sstring conf_file, std::string format, se
     string_to_file(conf_file, buf);
 }
 
-void write_property_file(seastar::sstring conf_file, std::vector<disk_descriptor> disk_descriptors) {
+void write_property_file(sstring conf_file, std::vector<disk_descriptor> disk_descriptors) {
     YAML::Emitter out;
     out << YAML::BeginMap;
     out << YAML::Key << "disks";
@@ -688,12 +689,12 @@ void write_property_file(seastar::sstring conf_file, std::vector<disk_descriptor
     out << YAML::EndMap;
     out << YAML::Newline;
 
-    string_to_file(conf_file, seastar::sstring(out.c_str(), out.size()));
+    string_to_file(conf_file, sstring(out.c_str(), out.size()));
 }
 
 // Returns the mountpoint of a path. It works by walking backwards from the canonical path
 // (absolute, with symlinks resolved), until we find a point that crosses a device ID.
-fs::path mountpoint_of(seastar::sstring filename) {
+fs::path mountpoint_of(sstring filename) {
     fs::path mnt_candidate = fs::canonical(fs::path(filename));
     std::optional<dev_t> candidate_id = {};
     auto current = mnt_candidate;
@@ -715,20 +716,20 @@ int main(int ac, char** av) {
     namespace bpo = boost::program_options;
     bool fs_check = false;
 
-    seastar::app_template::config app_cfg;
+    app_template::config app_cfg;
     app_cfg.name = "IOTune";
 
-    seastar::app_template app(std::move(app_cfg));
+    app_template app(std::move(app_cfg));
     auto opt_add = app.add_options();
     opt_add
-        ("evaluation-directory", bpo::value<std::vector<seastar::sstring>>()->required(), "directory where to execute the evaluation")
-        ("properties-file", bpo::value<seastar::sstring>(), "path in which to write the YAML file")
-        ("options-file", bpo::value<seastar::sstring>(), "path in which to write the legacy conf file")
+        ("evaluation-directory", bpo::value<std::vector<sstring>>()->required(), "directory where to execute the evaluation")
+        ("properties-file", bpo::value<sstring>(), "path in which to write the YAML file")
+        ("options-file", bpo::value<sstring>(), "path in which to write the legacy conf file")
         ("duration", bpo::value<unsigned>()->default_value(120), "time, in seconds, for which to run the test")
-        ("format", bpo::value<seastar::sstring>()->default_value("seastar"), "Configuration file format (seastar | envfile)")
+        ("format", bpo::value<sstring>()->default_value("seastar"), "Configuration file format (seastar | envfile)")
         ("fs-check", bpo::bool_switch(&fs_check), "perform FS check only")
         ("accuracy", bpo::value<unsigned>()->default_value(3), "acceptable deviation of measurements (percents)")
-        ("saturation", bpo::value<seastar::sstring>()->default_value(""), "measure saturation lengths (read | write | both) (this is very slow!)")
+        ("saturation", bpo::value<sstring>()->default_value(""), "measure saturation lengths (read | write | both) (this is very slow!)")
         ("random-io-buffer-size", bpo::value<unsigned>()->default_value(0), "force buffer size for random write and random read")
         ("force-io-depth", bpo::value<unsigned>()->default_value(0), "force io depth to a certain size (overriding auto detection logic)")
     ;
@@ -736,11 +737,11 @@ int main(int ac, char** av) {
     return app.run(ac, av, [&] {
         return seastar::async([&] {
             auto& configuration = app.configuration();
-            auto eval_dirs = configuration["evaluation-directory"].as<std::vector<seastar::sstring>>();
-            auto format = configuration["format"].as<seastar::sstring>();
+            auto eval_dirs = configuration["evaluation-directory"].as<std::vector<sstring>>();
+            auto format = configuration["format"].as<sstring>();
             auto duration = std::chrono::duration<double>(configuration["duration"].as<unsigned>() * 1s);
             auto accuracy = configuration["accuracy"].as<unsigned>();
-            auto saturation = configuration["saturation"].as<seastar::sstring>();
+            auto saturation = configuration["saturation"].as<sstring>();
             auto random_io_buffer_size = configuration["random-io-buffer-size"].as<unsigned>();
             auto force_io_depth = configuration["force-io-depth"].as<unsigned>();
 
@@ -763,7 +764,7 @@ int main(int ac, char** av) {
             }
 
             std::vector<disk_descriptor> disk_descriptors;
-            std::unordered_map<seastar::sstring, seastar::sstring> mountpoint_map;
+            std::unordered_map<sstring, sstring> mountpoint_map;
             // We want to evaluate once per mountpoint, but we still want to write in one of the
             // directories that we were provided - we may not have permissions to write into the
             // mountpoint itself. If we are passed more than one directory per mountpoint, we don't
@@ -822,7 +823,7 @@ int main(int ac, char** av) {
 
                 ::iotune_multi_shard_context iotune_tests(test_directory, random_io_buffer_size);
                 iotune_tests.start().get();
-                auto stop = seastar::defer([&iotune_tests] () noexcept {
+                auto stop = defer([&iotune_tests] () noexcept {
                     try {
                         iotune_tests.stop().get();
                     } catch (...) {
@@ -905,14 +906,14 @@ int main(int ac, char** av) {
             auto file = "properties file";
             try {
                 if (configuration.count("properties-file")) {
-                    fmt::print("Writing result to {}\n", configuration["properties-file"].as<seastar::sstring>());
-                    write_property_file(configuration["properties-file"].as<seastar::sstring>(), disk_descriptors);
+                    fmt::print("Writing result to {}\n", configuration["properties-file"].as<sstring>());
+                    write_property_file(configuration["properties-file"].as<sstring>(), disk_descriptors);
                 }
 
                 file = "configuration file";
                 if (configuration.count("options-file")) {
-                    fmt::print("Writing result to {}\n", configuration["options-file"].as<seastar::sstring>());
-                    write_configuration_file(configuration["options-file"].as<seastar::sstring>(), format, configuration["properties-file"].as<seastar::sstring>());
+                    fmt::print("Writing result to {}\n", configuration["options-file"].as<sstring>());
+                    write_configuration_file(configuration["options-file"].as<sstring>(), format, configuration["properties-file"].as<sstring>());
                 }
             } catch (...) {
                 iotune_logger.error("Exception when writing {}: {}.\nPlease add the above values manually to your seastar command line.", file, std::current_exception());

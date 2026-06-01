@@ -29,6 +29,7 @@
 #include <utility>
 #include <algorithm>
 
+using namespace seastar;
 using namespace net;
 
 void dump_packet(const packet& p) {
@@ -42,28 +43,28 @@ void dump_packet(const packet& p) {
     std::cout << "\n";
 }
 
-seastar::future<> echo_packet(seastar::net::qp& netif, packet p) {
+future<> echo_packet(net::qp& netif, packet p) {
     auto f = p.frag(0);
     if (f.size < sizeof(eth_hdr)) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
     auto pos = 0;
     auto eh = reinterpret_cast<eth_hdr*>(f.base + pos);
     pos += sizeof(*eh);
     *eh = ntoh(*eh);
     if (eh->eth_proto != 0x0800) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
     auto iph = reinterpret_cast<ip_hdr*>(f.base + pos);
     *iph = ntoh(*iph);
     pos += iph->ihl * 4;
     if (iph->ver != 4 || iph->ihl < 5 || iph->ip_proto != 1) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
     auto ip_len = iph->len;
     auto icmph = reinterpret_cast<icmp_hdr*>(f.base + pos);
     if (icmph->type != icmp_hdr::msg_type::echo_request) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
     auto icmp_len = ip_len - iph->ihl * 4;
     std::swap(eh->src_mac, eh->dst_mac);
@@ -88,8 +89,8 @@ void usage()
 #endif
 
 int main(int ac, char** av) {
-    std::unique_ptr<seastar::net::device> dnet;
-    seastar::net::qp* vnet;
+    std::unique_ptr<net::device> dnet;
+    net::qp* vnet;
 
     native_stack_options opts;
 
@@ -114,11 +115,11 @@ int main(int ac, char** av) {
     auto qp = dnet->init_local_queue(opts, 0);
     vnet = qp.get();
     dnet->set_local_queue(std::move(qp));
-    seastar::future<> rx_done =
+    future<> rx_done =
         dnet->receive([vnet] (packet p) {
             return echo_packet(*vnet, std::move(p));
         });
-    seastar::engine().run();
+    engine().run();
     return 0;
 }
 

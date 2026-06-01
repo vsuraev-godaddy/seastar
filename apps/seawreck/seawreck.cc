@@ -28,6 +28,7 @@
 #include <seastar/core/semaphore.hh>
 #include <chrono>
 
+using namespace seastar;
 
 template <typename... Args>
 void http_debug(const char* fmt, Args&&... args) {
@@ -41,10 +42,10 @@ private:
     unsigned _duration;
     unsigned _conn_per_core;
     unsigned _reqs_per_conn;
-    std::vector<seastar::connected_socket> _sockets;
-    seastar::semaphore _conn_connected{0};
-    seastar::semaphore _conn_finished{0};
-    seastar::timer<> _run_timer;
+    std::vector<connected_socket> _sockets;
+    semaphore _conn_connected{0};
+    semaphore _conn_finished{0};
+    timer<> _run_timer;
     bool _timer_based;
     bool _timer_done{false};
     uint64_t _total_reqs{0};
@@ -59,14 +60,14 @@ public:
 
     class connection {
     private:
-        seastar::connected_socket _fd;
+        connected_socket _fd;
         input_stream<char> _read_buf;
         output_stream<char> _write_buf;
         http_response_parser _parser;
         http_client* _http_client;
         uint64_t _nr_done{0};
     public:
-        connection(seastar::connected_socket&& fd, http_client* client)
+        connection(connected_socket&& fd, http_client* client)
             : _fd(std::move(fd))
             , _read_buf(_fd.input())
             , _write_buf(_fd.output())
@@ -77,7 +78,7 @@ public:
             return _nr_done;
         }
 
-        seastar::future<> do_req() {
+        future<> do_req() {
             return _write_buf.write("GET / HTTP/1.1\r\nHost: 127.0.0.1:10000\r\n\r\n").then([this] {
                 return _write_buf.flush();
             }).then([this] {
@@ -85,13 +86,13 @@ public:
                 return _read_buf.consume(_parser).then([this] {
                     // Read HTTP response header first
                     if (_parser.eof()) {
-                        return seastar::make_ready_future<>();
+                        return make_ready_future<>();
                     }
                     auto _rsp = _parser.get_parsed_response();
                     auto it = _rsp->_headers.find("Content-Length");
                     if (it == _rsp->_headers.end()) {
                         fmt::print("Error: HTTP response does not contain: Content-Length\n");
-                        return seastar::make_ready_future<>();
+                        return make_ready_future<>();
                     }
                     auto content_len = std::stoi(it->second);
                     http_debug("Content-Length = %d\n", content_len);
@@ -110,9 +111,9 @@ public:
         }
     };
 
-    seastar::future<uint64_t> total_reqs() {
-        fmt::print("Requests on cpu {:2d}: {:d}\n", seastar::this_shard_id(), _total_reqs);
-        return seastar::make_ready_future<uint64_t>(_total_reqs);
+    future<uint64_t> total_reqs() {
+        fmt::print("Requests on cpu {:2d}: {:d}\n", this_shard_id(), _total_reqs);
+        return make_ready_future<uint64_t>(_total_reqs);
     }
 
     bool done(uint64_t nr_done) {
@@ -123,22 +124,22 @@ public:
         }
     }
 
-    seastar::future<> connect(ipv4_addr server_addr) {
+    future<> connect(ipv4_addr server_addr) {
         // Establish all the TCP connections first
         for (unsigned i = 0; i < _conn_per_core; i++) {
             // Connect in the background, signal _conn_connected when done.
-            (void)seastar::connect(seastar::make_ipv4_address(server_addr)).then([this] (seastar::connected_socket fd) {
+            (void)seastar::connect(make_ipv4_address(server_addr)).then([this] (connected_socket fd) {
                 _sockets.push_back(std::move(fd));
-                http_debug("Established connection %6d on cpu %3d\n", _conn_connected.current(), seastar::this_shard_id());
+                http_debug("Established connection %6d on cpu %3d\n", _conn_connected.current(), this_shard_id());
                 _conn_connected.signal();
             }).or_terminate();
         }
         return _conn_connected.wait(_conn_per_core);
     }
 
-    seastar::future<> run() {
+    future<> run() {
         // All connected, start HTTP request
-        http_debug("Established all %6d tcp connections on cpu %3d\n", _conn_per_core, seastar::this_shard_id());
+        http_debug("Established all %6d tcp connections on cpu %3d\n", _conn_per_core, this_shard_id());
         if (_timer_based) {
             _run_timer.arm(std::chrono::seconds(_duration));
         }
@@ -146,7 +147,7 @@ public:
             auto conn = new connection(std::move(fd), this);
             // Run in the background, signal _conn_finished when done.
             (void)conn->do_req().then_wrapped([this, conn] (auto&& f) {
-                http_debug("Finished connection %6d on cpu %3d\n", _conn_finished.current(), seastar::this_shard_id());
+                http_debug("Finished connection %6d on cpu %3d\n", _conn_finished.current(), this_shard_id());
                 _total_reqs += conn->nr_done();
                 _conn_finished.signal();
                 delete conn;
@@ -163,7 +164,7 @@ public:
         // All finished
         return _conn_finished.wait(_conn_per_core);
     }
-    seastar::future<> stop() {
+    future<> stop() {
         return make_ready_future();
     }
 };
@@ -171,9 +172,9 @@ public:
 namespace bpo = boost::program_options;
 
 int main(int ac, char** av) {
-    seastar::app_template::config app_cfg;
+    app_template::config app_cfg;
     app_cfg.auto_handle_sigint_sigterm = false;
-    seastar::app_template app(std::move(app_cfg));
+    app_template app(std::move(app_cfg));
 
     app.add_options()
         ("server,s", bpo::value<std::string>()->default_value("192.168.66.100:10000"), "Server address")
@@ -181,7 +182,7 @@ int main(int ac, char** av) {
         ("reqs,r", bpo::value<unsigned>()->default_value(0), "reqs per connection")
         ("duration,d", bpo::value<unsigned>()->default_value(10), "duration of the test in seconds)");
 
-    return app.run(ac, av, [&app] () -> seastar::future<int> {
+    return app.run(ac, av, [&app] () -> future<int> {
         auto& config = app.configuration();
         auto server = config["server"].as<std::string>();
         auto reqs_per_conn = config["reqs"].as<unsigned>();
@@ -190,10 +191,10 @@ int main(int ac, char** av) {
 
         if (total_conn % smp::count != 0) {
             fmt::print("Error: conn needs to be n * cpu_nr\n");
-            return seastar::make_ready_future<int>(-1);
+            return make_ready_future<int>(-1);
         }
 
-        auto http_clients = new seastar::distributed<http_client>;
+        auto http_clients = new distributed<http_client>;
 
         // Start http requests on all the cores
         auto started = steady_clock_type::now();
@@ -218,12 +219,12 @@ int main(int ac, char** av) {
            fmt::print("Requests/sec: {:f}\n", static_cast<double>(total_reqs) / secs);
            fmt::print("==========     done     ============\n");
            return http_clients->stop().then([http_clients] {
-               // FIXME: If we call seastar::engine().exit(0) here to exit when
+               // FIXME: If we call engine().exit(0) here to exit when
                // requests are done. The tcp connection will not be closed
                // properly, becasue we exit too earily and the FIN packets are
                // not exchanged.
                 delete http_clients;
-                return seastar::make_ready_future<int>(0);
+                return make_ready_future<int>(0);
            });
         });
     });

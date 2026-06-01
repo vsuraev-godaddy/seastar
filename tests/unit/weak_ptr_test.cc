@@ -25,6 +25,7 @@
 #include <boost/test/unit_test.hpp>
 #include <seastar/core/weak_ptr.hh>
 
+using namespace seastar;
 
 class myclass : public weakly_referencable<myclass> {};
 

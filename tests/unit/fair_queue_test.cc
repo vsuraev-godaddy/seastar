@@ -35,6 +35,7 @@
 #include <boost/range/irange.hpp>
 #include <chrono>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 struct request {
@@ -168,7 +169,7 @@ public:
     // changes, for instance, they can accumulate
     //
     // The ratios argument is the ratios towards the first class
-    void verify(seastar::sstring name, std::vector<unsigned> ratios, unsigned expected_error = 1) {
+    void verify(sstring name, std::vector<unsigned> ratios, unsigned expected_error = 1) {
         SEASTAR_ASSERT(ratios.size() == _results.size());
         auto str = name + ":";
         for (auto i = 0ul; i < _results.size(); ++i) {

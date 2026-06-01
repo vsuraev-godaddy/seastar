@@ -29,6 +29,7 @@
 #include <seastar/util/log.hh>
 #include <seastar/core/loop.hh>
 
+using namespace seastar;
 
 struct serializer {
 };
@@ -71,15 +72,15 @@ template <typename Input>
 inline double read(serializer, Input& input, rpc::type<double>) { return read_arithmetic_type<double>(input); }
 
 template <typename Output>
-inline void write(serializer, Output& out, const seastar::sstring& v) {
+inline void write(serializer, Output& out, const sstring& v) {
     write_arithmetic_type(out, uint32_t(v.size()));
     out.write(v.c_str(), v.size());
 }
 
 template <typename Input>
-inline seastar::sstring read(serializer, Input& in, rpc::type<seastar::sstring>) {
+inline sstring read(serializer, Input& in, rpc::type<sstring>) {
     auto size = read_arithmetic_type<uint32_t>(in);
-    seastar::sstring ret = uninitialized_string(size);
+    sstring ret = uninitialized_string(size);
     in.read(ret.data(), size);
     return ret;
 }
@@ -88,20 +89,20 @@ namespace bpo = boost::program_options;
 using namespace std::chrono_literals;
 
 class mycomp : public rpc::compressor::factory {
-    const seastar::sstring _name = "LZ4";
+    const sstring _name = "LZ4";
 public:
-    virtual const seastar::sstring& supported() const override {
+    virtual const sstring& supported() const override {
         fmt::print("supported called\n");
         return _name;
     }
-    virtual std::unique_ptr<rpc::compressor> negotiate(seastar::sstring feature, bool is_server) const override {
+    virtual std::unique_ptr<rpc::compressor> negotiate(sstring feature, bool is_server) const override {
         fmt::print("negotiate called with {}\n", feature);
         return feature == _name ? std::make_unique<rpc::lz4_compressor>() : nullptr;
     }
 };
 
 int main(int ac, char** av) {
-    seastar::app_template app;
+    app_template app;
     app.add_options()
                     ("port", bpo::value<uint16_t>()->default_value(10000), "RPC server port")
                     ("server", bpo::value<std::string>(), "Server address")
@@ -121,14 +122,14 @@ int main(int ac, char** av) {
         bool compress = config["compress"].as<bool>();
         static mycomp mc;
         auto test1 = myrpc.register_handler(1, [x = 0](int i) mutable { fmt::print("test1 count {:d} got {:d}\n", ++x, i); });
-        auto test2 = myrpc.register_handler(2, [](int a, int b){ fmt::print("test2 got {:d} {:d}\n", a, b); return seastar::make_ready_future<int>(a+b); });
+        auto test2 = myrpc.register_handler(2, [](int a, int b){ fmt::print("test2 got {:d} {:d}\n", a, b); return make_ready_future<int>(a+b); });
         auto test3 = myrpc.register_handler(3, [](double x){ fmt::print("test3 got {:f}\n", x); return std::make_unique<double>(sin(x)); });
         auto test4 = myrpc.register_handler(4, [](){ fmt::print("test4 throw!\n"); throw std::runtime_error("exception!"); });
         auto test5 = myrpc.register_handler(5, [](){ fmt::print("test5 no wait\n"); return rpc::no_wait; });
         auto test6 = myrpc.register_handler(6, [](const rpc::client_info& info, int x){ fmt::print("test6 client {}, {:d}\n", inet_ntoa(info.addr.as_posix_sockaddr_in().sin_addr), x); });
         auto test8 = myrpc.register_handler(8, [](){ fmt::print("test8 sleep for 2 sec\n"); return sleep(2s); });
         auto test13 = myrpc.register_handler(13, [](){ fmt::print("test13 sleep for 1 msec\n"); return sleep(1ms); });
-        auto test_message_to_big = myrpc.register_handler(14, [](seastar::sstring payload){ fmt::print("test message to bit, should not get here"); });
+        auto test_message_to_big = myrpc.register_handler(14, [](sstring payload){ fmt::print("test message to bit, should not get here"); });
 
         if (config.count("server")) {
             std::cout << "client" << std::endl;
@@ -137,9 +138,9 @@ int main(int ac, char** av) {
             auto test9_1 = myrpc.make_client<long (long a, long b, int c)>(9); // send optional
             auto test9_2 = myrpc.make_client<long (long a, long b, int c, long d)>(9); // send more data than handler expects
             auto test10 = myrpc.make_client<long ()>(10); // receive less then replied
-            auto test10_1 = myrpc.make_client<seastar::future<rpc::tuple<long, int>> ()>(10); // receive all
-            auto test11 = myrpc.make_client<seastar::future<rpc::tuple<long, rpc::optional<int>>> ()>(11); // receive more then replied
-            auto test12 = myrpc.make_client<void (int sleep_ms, seastar::sstring payload)>(12); // large payload vs. server limits
+            auto test10_1 = myrpc.make_client<future<rpc::tuple<long, int>> ()>(10); // receive all
+            auto test11 = myrpc.make_client<future<rpc::tuple<long, rpc::optional<int>>> ()>(11); // receive more then replied
+            auto test12 = myrpc.make_client<void (int sleep_ms, sstring payload)>(12); // large payload vs. server limits
             auto test_nohandler = myrpc.make_client<void ()>(100000000); // non existing verb
             auto test_nohandler_nowait = myrpc.make_client<rpc::no_wait_type ()>(100000000); // non existing verb, no_wait call
             rpc::client_options co;
@@ -149,7 +150,7 @@ int main(int ac, char** av) {
 
             client = std::make_unique<rpc::protocol<serializer>::client>(myrpc, co, ipv4_addr{config["server"].as<std::string>()});
 
-            auto f = test8(*client, 1500ms).then_wrapped([](seastar::future<> f) {
+            auto f = test8(*client, 1500ms).then_wrapped([](future<> f) {
                 try {
                     f.get();
                     printf("test8 should not get here!\n");
@@ -162,7 +163,7 @@ int main(int ac, char** av) {
                 (void)test1(*client, 5).then([] (){ fmt::print("test1 ended\n");});
                 (void)test2(*client, 1, 2).then([] (int r) { fmt::print("test2 got {:d}\n", r); });
                 (void)test3(*client, x).then([](double x) { fmt::print("sin={:f}\n", x); });
-                (void)test4(*client).then_wrapped([](seastar::future<> f) {
+                (void)test4(*client).then_wrapped([](future<> f) {
                     try {
                         f.get();
                         fmt::print("test4 your should not see this!\n");
@@ -179,7 +180,7 @@ int main(int ac, char** av) {
                 (void)test10(*client).then([] (long r) { fmt::print("test10 got {:d}\n", r); });
                 (void)test10_1(*client).then([] (rpc::tuple<long, int> r) { fmt::print("test10_1 got {:d} and {:d}\n", std::get<0>(r), std::get<1>(r)); });
                 (void)test11(*client).then([] (rpc::tuple<long, rpc::optional<int> > r) { fmt::print("test11 got {:d} and {:d}\n", std::get<0>(r), bool(std::get<1>(r))); });
-                (void)test_nohandler(*client).then_wrapped([](seastar::future<> f) {
+                (void)test_nohandler(*client).then_wrapped([](future<> f) {
                     try {
                         f.get();
                         fmt::print("test_nohandler your should not see this!\n");
@@ -190,8 +191,8 @@ int main(int ac, char** av) {
                     }
                 });
                 (void)test_nohandler_nowait(*client);
-                auto c = seastar::make_lw_shared<rpc::cancellable>();
-                (void)test13(*client, *c).then_wrapped([](seastar::future<> f) {
+                auto c = make_lw_shared<rpc::cancellable>();
+                (void)test13(*client, *c).then_wrapped([](future<> f) {
                     try {
                         f.get();
                         fmt::print("test13 shold not get here\n");
@@ -202,7 +203,7 @@ int main(int ac, char** av) {
                     }
                 });
                 c->cancel();
-                (void)test13(*client, *c).then_wrapped([](seastar::future<> f) {
+                (void)test13(*client, *c).then_wrapped([](future<> f) {
                     try {
                         f.get();
                         fmt::print("test13 shold not get here\n");
@@ -213,7 +214,7 @@ int main(int ac, char** av) {
                     }
                 });
                 (void)sleep(500us).then([c] { c->cancel(); });
-                (void)test_message_to_big(*client, uninitialized_string(10'000'001)).then_wrapped([](seastar::future<> f) {
+                (void)test_message_to_big(*client, uninitialized_string(10'000'001)).then_wrapped([](future<> f) {
                     try {
                         f.get();
                         fmt::print("test message to big shold not get here\n");
@@ -243,15 +244,15 @@ int main(int ac, char** av) {
             (void)f.finally([] {
                 return sleep(1s).then([] {
                     return client->stop().then([] {
-                        return seastar::engine().exit(0);
+                        return engine().exit(0);
                     });
                 });
             });
         } else {
             std::cout << "server on port " << port << std::endl;
             myrpc.register_handler(7, [](long a, long b) mutable {
-                auto p = seastar::make_lw_shared<seastar::promise<>>();
-                auto t = seastar::make_lw_shared<seastar::timer<>>();
+                auto p = make_lw_shared<promise<>>();
+                auto t = make_lw_shared<timer<>>();
                 fmt::print("test7 got {:d} {:d}\n", a, b);
                 auto f = p->get_future().then([a, b, t] {
                     fmt::print("test7 calc res\n");
@@ -273,15 +274,15 @@ int main(int ac, char** av) {
             });
             myrpc.register_handler(10, [] {
                 fmt::print("test 10\n");
-                return seastar::make_ready_future<rpc::tuple<long, int>>(rpc::tuple<long, int>(1, 2));
+                return make_ready_future<rpc::tuple<long, int>>(rpc::tuple<long, int>(1, 2));
             });
             myrpc.register_handler(11, [] {
                 fmt::print("test 11\n");
                 return 1ul;
             });
-            myrpc.register_handler(12, [] (int sleep_ms, seastar::sstring payload) {
+            myrpc.register_handler(12, [] (int sleep_ms, sstring payload) {
                 return sleep(std::chrono::milliseconds(sleep_ms)).then([] {
-                    return seastar::make_ready_future<>();
+                    return make_ready_future<>();
                 });
             });
 

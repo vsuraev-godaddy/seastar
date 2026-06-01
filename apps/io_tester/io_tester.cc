@@ -62,6 +62,7 @@
 #include <random>
 #include <yaml-cpp/yaml.h>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 using namespace boost::accumulators;
 
@@ -94,13 +95,13 @@ auto allocate_and_fill_buffer(size_t buffer_size) {
     return buffer;
 }
 
-seastar::future<std::pair<file, uint64_t>> create_and_fill_file(seastar::sstring name, uint64_t fsize, open_flags flags, file_open_options options) {
-    return seastar::open_file_dma(name, flags, options).then([fsize] (auto f) mutable {
-        return seastar::do_with(std::move(f), [fsize] (auto& f) {
+future<std::pair<file, uint64_t>> create_and_fill_file(sstring name, uint64_t fsize, open_flags flags, file_open_options options) {
+    return open_file_dma(name, flags, options).then([fsize] (auto f) mutable {
+        return do_with(std::move(f), [fsize] (auto& f) {
             return f.size().then([f, fsize] (uint64_t pre_truncate_size) mutable {
                 return f.truncate(fsize).then([f, fsize, pre_truncate_size] () mutable {
                     if (pre_truncate_size >= fsize) {
-                        return seastar::make_ready_future<std::pair<file, uint64_t>>(std::pair{f, 0u});
+                        return make_ready_future<std::pair<file, uint64_t>>(std::pair{f, 0u});
                     }
 
                     const uint64_t buffer_size{256ul << 10};
@@ -109,18 +110,18 @@ seastar::future<std::pair<file, uint64_t>> create_and_fill_file(seastar::sstring
                     const uint64_t last_buffer_id = (buffers_count - 1u);
                     const uint64_t last_write_position = buffer_size * last_buffer_id;
 
-                    return seastar::do_with(std::views::iota(UINT64_C(0), buffers_count), [f, buffer_size] (auto& buffers_range) mutable {
+                    return do_with(std::views::iota(UINT64_C(0), buffers_count), [f, buffer_size] (auto& buffers_range) mutable {
                         return max_concurrent_for_each(buffers_range.begin(), buffers_range.end(), 64, [f, buffer_size] (auto buffer_id) mutable {
                             auto source_buffer = allocate_and_fill_buffer(buffer_size);
                             auto write_position = buffer_id * buffer_size;
-                            return seastar::do_with(std::move(source_buffer), [f, write_position, buffer_size] (const auto& buffer) mutable {
+                            return do_with(std::move(source_buffer), [f, write_position, buffer_size] (const auto& buffer) mutable {
                                 return f.dma_write(write_position, buffer.get(), buffer_size).discard_result();
                             });
                         });
                     }).then([f]() mutable {
                         return f.flush();
                     }).then([f, last_write_position]() {
-                        return seastar::make_ready_future<std::pair<file, uint64_t>>(std::pair{f, last_write_position});
+                        return make_ready_future<std::pair<file, uint64_t>>(std::pair{f, last_write_position});
                     });
                 });
             });
@@ -128,7 +129,7 @@ seastar::future<std::pair<file, uint64_t>> create_and_fill_file(seastar::sstring
     });
 }
 
-seastar::future<> busyloop_sleep(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now) {
+future<> busyloop_sleep(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now) {
     return do_until([until] {
         return std::chrono::steady_clock::now() >= until;
     }, [] {
@@ -137,11 +138,11 @@ seastar::future<> busyloop_sleep(std::chrono::steady_clock::time_point until, st
 }
 
 template <typename Clock>
-seastar::future<> timer_sleep(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now) {
+future<> timer_sleep(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now) {
     return seastar::sleep<Clock>(std::chrono::duration_cast<std::chrono::microseconds>(until - now));
 }
 
-using sleep_fn = std::function<seastar::future<>(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now)>;
+using sleep_fn = std::function<future<>(std::chrono::steady_clock::time_point until, std::chrono::steady_clock::time_point now)>;
 
 class pause_distribution {
 public:
@@ -264,12 +265,12 @@ struct job_config {
 std::array<double, 4> quantiles = { 0.5, 0.95, 0.99, 0.999};
 static bool keep_files = false;
 
-seastar::future<> maybe_remove_file(seastar::sstring fname) {
-    return keep_files ? seastar::make_ready_future<>() : remove_file(fname);
+future<> maybe_remove_file(sstring fname) {
+    return keep_files ? make_ready_future<>() : remove_file(fname);
 }
 
-seastar::future<> maybe_close_file(file& f) {
-    return f ? f.close() : seastar::make_ready_future<>();
+future<> maybe_close_file(file& f) {
+    return f ? f.close() : make_ready_future<>();
 }
 
 class class_data {
@@ -293,10 +294,10 @@ protected:
     file _file;
     bool _think = false;
     ::sleep_fn _sleep_fn = timer_sleep<lowres_clock>;
-    seastar::timer<> _thinker;
+    timer<> _thinker;
 
-    virtual seastar::future<> do_start(seastar::sstring dir, directory_entry_type type) = 0;
-    virtual seastar::future<size_t> issue_request(char *buf, io_intent* intent) = 0;
+    virtual future<> do_start(sstring dir, directory_entry_type type) = 0;
+    virtual future<size_t> issue_request(char *buf, io_intent* intent) = 0;
 public:
     class_data(job_config cfg)
         : _config(std::move(cfg))
@@ -328,17 +329,17 @@ private:
         }
     }
 
-    seastar::future<> issue_request(char* buf, io_intent* intent, std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point stop) {
+    future<> issue_request(char* buf, io_intent* intent, std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point stop) {
         return issue_request(buf, intent).then([this, start, stop] (auto size) {
             auto now = std::chrono::steady_clock::now();
             if (now < stop) {
                 this->add_result(size, std::chrono::duration_cast<std::chrono::microseconds>(now - start));
             }
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         });
     }
 
-    seastar::future<> issue_requests_in_parallel(std::chrono::steady_clock::time_point stop) {
+    future<> issue_requests_in_parallel(std::chrono::steady_clock::time_point stop) {
         return parallel_for_each(std::views::iota(0u, parallelism()), [this, stop] (auto dummy) mutable {
             auto bufptr = allocate_aligned_buffer<char>(this->req_size(), _alignment);
             auto buf = bufptr.get();
@@ -351,8 +352,8 @@ private:
         });
     }
 
-    seastar::future<> issue_requests_at_rate(std::chrono::steady_clock::time_point stop) {
-        return seastar::do_with(io_intent{}, 0u, [this, stop] (io_intent& intent, unsigned& in_flight) {
+    future<> issue_requests_at_rate(std::chrono::steady_clock::time_point stop) {
+        return do_with(io_intent{}, 0u, [this, stop] (io_intent& intent, unsigned& in_flight) {
             return parallel_for_each(std::views::iota(0u, parallelism()), [this, stop, &intent, &in_flight] (auto dummy) mutable {
                 auto bufptr = allocate_aligned_buffer<char>(this->req_size(), _alignment);
                 auto buf = bufptr.get();
@@ -373,7 +374,7 @@ private:
                                 return this->_sleep_fn(next, now);
                             } else {
                                 // probably the system cannot keep-up with this rate
-                                return seastar::make_ready_future<>();
+                                return make_ready_future<>();
                             }
                         }).handle_exception_type([] (const cancelled_error&) {
                             // expected
@@ -390,7 +391,7 @@ private:
     }
 
 public:
-    seastar::future<> issue_requests(std::chrono::steady_clock::time_point stop) {
+    future<> issue_requests(std::chrono::steady_clock::time_point stop) {
         _start = std::chrono::steady_clock::now();
         return with_scheduling_group(_sg, [this, stop] {
             if (rps() == 0) {
@@ -403,11 +404,11 @@ public:
         });
     }
 
-    seastar::future<> think() {
+    future<> think() {
         if (_think) {
             return seastar::sleep(std::chrono::duration_cast<std::chrono::microseconds>(_config.shard_info.think_time));
         } else {
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         }
     }
     // Generate the test file(s) for reads and writes alike. It is much simpler to just generate one file per job instead of expecting
@@ -421,29 +422,29 @@ public:
     // append            : will write to the file from pos = EOF onwards, always appending to the end.
     // unlink            : will unlink files created at the beginning of the execution
     // cpu               : CPU-only load, file is not created.
-    seastar::future<> start(seastar::sstring dir, directory_entry_type type) {
+    future<> start(sstring dir, directory_entry_type type) {
         return do_start(dir, type).then([this] {
-            if (seastar::this_shard_id() == 0 && _config.shard_info.bandwidth != 0) {
-                return seastar::make_ready_future<>(); // FIXME _iop.update_bandwidth(_config.shard_info.bandwidth);
+            if (this_shard_id() == 0 && _config.shard_info.bandwidth != 0) {
+                return make_ready_future<>(); // FIXME _iop.update_bandwidth(_config.shard_info.bandwidth);
             } else {
-                return seastar::make_ready_future<>();
+                return make_ready_future<>();
             }
         });
     }
 
-    seastar::future<> stop() {
+    future<> stop() {
         return stop_hook().finally([this] {
             return maybe_close_file(_file);
         });
     }
 
-    const seastar::sstring name() const {
+    const sstring name() const {
         return _config.name;
     }
 
 protected:
-    seastar::sstring type_str() const {
-        return std::unordered_map<request_type, seastar::sstring>{
+    sstring type_str() const {
+        return std::unordered_map<request_type, sstring>{
             { request_type::seqread, "SEQ READ" },
             { request_type::seqwrite, "SEQ WRITE" },
             { request_type::randread, "RAND READ" },
@@ -458,7 +459,7 @@ protected:
         return _config.type;
     }
 
-    seastar::sstring think_time() const {
+    sstring think_time() const {
         if (_config.shard_info.think_time == std::chrono::duration<float>(0)) {
             return "NO think time";
         } else {
@@ -547,8 +548,8 @@ protected:
 
 public:
     virtual void emit_results(YAML::Emitter& out) = 0;
-    virtual seastar::future<> stop_hook() {
-        return seastar::make_ready_future<>();
+    virtual future<> stop_hook() {
+        return make_ready_future<>();
     }
 };
 
@@ -556,20 +557,20 @@ class io_class_data : public class_data {
 protected:
     bool _is_dev_null = false;
 
-    seastar::future<size_t> on_io_completed(seastar::future<size_t> f) {
+    future<size_t> on_io_completed(future<size_t> f) {
         if (!_is_dev_null) {
             return f;
         }
 
         return f.then([this] (auto size_f) {
-            return seastar::make_ready_future<size_t>(this->req_size());
+            return make_ready_future<size_t>(this->req_size());
         });
     }
 
 public:
     io_class_data(job_config cfg) : class_data(std::move(cfg)) {}
 
-    seastar::future<> do_start(seastar::sstring path, directory_entry_type type) override {
+    future<> do_start(sstring path, directory_entry_type type) override {
         if (type == directory_entry_type::directory) {
             return do_start_on_directory(path);
         }
@@ -586,11 +587,11 @@ public:
     }
 
 private:
-    seastar::future<> do_start_on_directory(seastar::sstring dir) {
-        auto fname = format("{}/test-{}-{:d}", dir, name(), seastar::this_shard_id());
-        auto flags = seastar::open_flags::rw | seastar::open_flags::create;
+    future<> do_start_on_directory(sstring dir) {
+        auto fname = format("{}/test-{}-{:d}", dir, name(), this_shard_id());
+        auto flags = open_flags::rw | open_flags::create;
         if (_config.options.dsync) {
-            flags |= seastar::open_flags::dsync;
+            flags |= open_flags::dsync;
         }
         file_open_options options;
         options.extent_allocation_size_hint = _config.extent_allocation_size_hint.value_or(_config.file_size);
@@ -600,7 +601,7 @@ private:
             _file = std::move(p.first);
             _last_pos = (req_type() == request_type::append) ? p.second : 0u;
 
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         }).then([fname] {
             // If keep_files == false, then the file shall not exist after the execution.
             // After the following function call the usage of the file is valid until `this->_file` object is closed.
@@ -608,36 +609,36 @@ private:
         });
     }
 
-    seastar::future<> do_start_on_bdev(seastar::sstring name) {
-        auto flags = seastar::open_flags::rw;
+    future<> do_start_on_bdev(sstring name) {
+        auto flags = open_flags::rw;
         if (_config.options.dsync) {
-            flags |= seastar::open_flags::dsync;
+            flags |= open_flags::dsync;
         }
 
-        return seastar::open_file_dma(name, flags).then([this] (auto f) {
+        return open_file_dma(name, flags).then([this] (auto f) {
             _file = std::move(f);
             return _file.size().then([this] (uint64_t size) {
                 auto shard_area_size = align_down<uint64_t>(size / smp::count, 1 << 20);
                 if (_config.offset_in_bdev + _config.file_size > shard_area_size) {
                     throw std::runtime_error("Data doesn't fit the blockdevice");
                 }
-                _offset = shard_area_size * seastar::this_shard_id() + _config.offset_in_bdev;
-                return seastar::make_ready_future<>();
+                _offset = shard_area_size * this_shard_id() + _config.offset_in_bdev;
+                return make_ready_future<>();
             });
         });
     }
 
-    seastar::future<> do_start_on_dev_null() {
+    future<> do_start_on_dev_null() {
         file_open_options options;
         options.append_is_unlikely = true;
-        return seastar::open_file_dma("/dev/null", seastar::open_flags::rw, std::move(options)).then([this] (auto f) {
+        return open_file_dma("/dev/null", open_flags::rw, std::move(options)).then([this] (auto f) {
             _file = std::move(f);
             _is_dev_null = true;
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         });
     }
 
-    void emit_one_metrics(YAML::Emitter& out, seastar::sstring m_name) {
+    void emit_one_metrics(YAML::Emitter& out, sstring m_name) {
         const auto& values = seastar::metrics::impl::get_value_map();
         const auto& mf = values.find(m_name);
         SEASTAR_ASSERT(mf != values.end());
@@ -684,7 +685,7 @@ class read_io_class_data : public io_class_data {
 public:
     read_io_class_data(job_config cfg) : io_class_data(std::move(cfg)) {}
 
-    seastar::future<size_t> issue_request(char *buf, io_intent* intent) override {
+    future<size_t> issue_request(char *buf, io_intent* intent) override {
         auto f = _file.dma_read(this->get_pos(), buf, this->req_size(), intent);
         return on_io_completed(std::move(f));
     }
@@ -694,7 +695,7 @@ class write_io_class_data : public io_class_data {
 public:
     write_io_class_data(job_config cfg) : io_class_data(std::move(cfg)) {}
 
-    seastar::future<size_t> issue_request(char *buf, io_intent* intent) override {
+    future<size_t> issue_request(char *buf, io_intent* intent) override {
         auto f = _file.dma_write(this->get_pos(), buf, this->req_size(), intent);
         return on_io_completed(std::move(f));
     }
@@ -702,7 +703,7 @@ public:
 
 class unlink_class_data : public class_data {
 private:
-    seastar::sstring _dir_path{};
+    sstring _dir_path{};
     uint64_t _file_id_to_remove{0u};
 
 public:
@@ -712,25 +713,25 @@ public:
         }
     }
 
-    seastar::future<> do_start(seastar::sstring path, directory_entry_type type) override {
+    future<> do_start(sstring path, directory_entry_type type) override {
         if (type == directory_entry_type::directory) {
             return do_start_on_directory(path);
         }
         throw std::runtime_error(format("Unsupported storage. {} should be directory", path));
     }
 
-    seastar::future<size_t> issue_request(char *buf, io_intent* intent) override {
+    future<size_t> issue_request(char *buf, io_intent* intent) override {
         if (all_files_removed()) {
             fmt::print("[WARNING]: Cannot issue request in unlink_class_data! All files have been removed for shard_id={}\n"
-                       "[WARNING]: Please create more files or adjust the frequency of unlinks.", seastar::this_shard_id());
-            return seastar::make_ready_future<size_t>(0u);
+                       "[WARNING]: Please create more files or adjust the frequency of unlinks.", this_shard_id());
+            return make_ready_future<size_t>(0u);
         }
 
         const auto fname = get_filename(_file_id_to_remove);
         ++_file_id_to_remove;
 
         return remove_file(fname).then([]{
-            return seastar::make_ready_future<size_t>(0u);
+            return make_ready_future<size_t>(0u);
         });
     }
 
@@ -748,9 +749,9 @@ public:
     }
 
 private:
-    seastar::future<> stop_hook() override {
+    future<> stop_hook() override {
         if (all_files_removed() || keep_files) {
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         }
 
         return max_concurrent_for_each(std::views::iota(_file_id_to_remove, files_count()), max_concurrency(), [this] (uint64_t file_id) {
@@ -773,24 +774,24 @@ private:
         return files_count() <= _file_id_to_remove;
     }
 
-    seastar::sstring get_filename(uint64_t file_id) const {
-        return format("{}/test-{}-shard-{:d}-file-{}", _dir_path, name(), seastar::this_shard_id(), file_id);
+    sstring get_filename(uint64_t file_id) const {
+        return format("{}/test-{}-shard-{:d}-file-{}", _dir_path, name(), this_shard_id(), file_id);
     }
 
-    seastar::future<> do_start_on_directory(seastar::sstring path) {
+    future<> do_start_on_directory(sstring path) {
         _dir_path = std::move(path);
 
         return max_concurrent_for_each(std::views::iota(UINT64_C(0), files_count()), max_concurrency(), [this] (uint64_t file_id) {
             const auto fname = get_filename(file_id);
             const auto fsize = align_up<uint64_t>(_config.file_size / files_count(), extent_size_hint_alignment);
-            const auto flags = seastar::open_flags::rw | seastar::open_flags::create;
+            const auto flags = open_flags::rw | open_flags::create;
 
             file_open_options options;
             options.extent_allocation_size_hint = _config.extent_allocation_size_hint.value_or(fsize);
             options.append_is_unlikely = true;
 
             return create_and_fill_file(fname, fsize, flags, options).then([](std::pair<file, uint64_t> p) {
-                return seastar::do_with(std::move(p.first), [] (auto& f) {
+                return do_with(std::move(p.first), [] (auto& f) {
                     return f.close();
                 });
             });
@@ -802,18 +803,18 @@ class cpu_class_data : public class_data {
 public:
     cpu_class_data(job_config cfg) : class_data(std::move(cfg)) {}
 
-    seastar::future<> do_start(seastar::sstring dir, directory_entry_type type) override {
-        return seastar::make_ready_future<>();
+    future<> do_start(sstring dir, directory_entry_type type) override {
+        return make_ready_future<>();
     }
 
-    seastar::future<size_t> issue_request(char *buf, io_intent* intent) override {
+    future<size_t> issue_request(char *buf, io_intent* intent) override {
         // We do want the execution time to be a busy loop, and not just a bunch of
         // continuations until our time is up: by doing this we can also simulate the behavior
         // of I/O continuations in the face of reactor stalls.
         auto start  = std::chrono::steady_clock::now();
         do {
         } while ((std::chrono::steady_clock::now() - start) < _config.shard_info.execution_time);
-        return seastar::make_ready_future<size_t>(1);
+        return make_ready_future<size_t>(1);
     }
 
     virtual void emit_results(YAML::Emitter& out) override {
@@ -1037,15 +1038,15 @@ struct convert<job_config> {
 class context {
     std::vector<std::unique_ptr<class_data>> _cl;
 
-    seastar::sstring _dir;
+    sstring _dir;
     directory_entry_type _type;
     std::chrono::seconds _duration;
 
-    seastar::semaphore _finished;
+    semaphore _finished;
 public:
-    context(seastar::sstring dir, directory_entry_type dtype, std::vector<job_config> req_config, unsigned duration)
+    context(sstring dir, directory_entry_type dtype, std::vector<job_config> req_config, unsigned duration)
             : _cl(boost::copy_range<std::vector<std::unique_ptr<class_data>>>(req_config
-                | boost::adaptors::filtered([] (auto& cfg) { return cfg.shard_placement.is_set(seastar::this_shard_id()); })
+                | boost::adaptors::filtered([] (auto& cfg) { return cfg.shard_placement.is_set(this_shard_id()); })
                 | boost::adaptors::transformed([] (auto& cfg) { return cfg.gen_class_data(); })
             ))
             , _dir(dir)
@@ -1054,19 +1055,19 @@ public:
             , _finished(0)
     {}
 
-    seastar::future<> stop() {
+    future<> stop() {
         return parallel_for_each(_cl, [] (std::unique_ptr<class_data>& cl) {
             return cl->stop();
         });
     }
 
-    seastar::future<> start() {
+    future<> start() {
         return parallel_for_each(_cl, [this] (std::unique_ptr<class_data>& cl) {
             return cl->start(_dir, _type);
         });
     }
 
-    seastar::future<> issue_requests() {
+    future<> issue_requests() {
         return parallel_for_each(_cl.begin(), _cl.end(), [this] (std::unique_ptr<class_data>& cl) {
             return cl->issue_requests(std::chrono::steady_clock::now() + _duration).finally([this] {
                 _finished.signal(1);
@@ -1074,7 +1075,7 @@ public:
         });
     }
 
-    seastar::future<> emit_results(YAML::Emitter& out) {
+    future<> emit_results(YAML::Emitter& out) {
         return _finished.wait(_cl.size()).then([this, &out] {
             for (auto& cl: _cl) {
                 out << YAML::Key << cl->name();
@@ -1082,12 +1083,12 @@ public:
                 cl->emit_results(out);
                 out << YAML::EndMap;
             }
-            return seastar::make_ready_future<>();
+            return make_ready_future<>();
         });
     }
 };
 
-static void show_results(seastar::distributed<context>& ctx) {
+static void show_results(distributed<context>& ctx) {
     YAML::Emitter out;
     out << YAML::BeginDoc;
     out << YAML::BeginSeq;
@@ -1107,22 +1108,22 @@ static void show_results(seastar::distributed<context>& ctx) {
 int main(int ac, char** av) {
     namespace bpo = boost::program_options;
 
-    seastar::app_template app;
+    app_template app;
     auto opt_add = app.add_options();
     opt_add
-        ("storage", bpo::value<seastar::sstring>()->default_value("."), "directory or block device where to execute the test")
+        ("storage", bpo::value<sstring>()->default_value("."), "directory or block device where to execute the test")
         ("duration", bpo::value<unsigned>()->default_value(10), "for how long (in seconds) to run the test")
-        ("conf", bpo::value<seastar::sstring>()->default_value("./conf.yaml"), "YAML file containing benchmark specification")
+        ("conf", bpo::value<sstring>()->default_value("./conf.yaml"), "YAML file containing benchmark specification")
         ("keep-files", bpo::value<bool>()->default_value(false), "keep test files, next run may re-use them")
     ;
 
-    seastar::distributed<context> ctx;
+    distributed<context> ctx;
     return app.run(ac, av, [&] {
         return seastar::async([&] {
             auto& opts = app.configuration();
-            auto& storage = opts["storage"].as<seastar::sstring>();
+            auto& storage = opts["storage"].as<sstring>();
 
-            auto st_type = seastar::engine().file_type(storage).get();
+            auto st_type = engine().file_type(storage).get();
 
             if (!st_type) {
                 throw std::runtime_error(format("Unknown storage {}", storage));
@@ -1137,7 +1138,7 @@ int main(int ac, char** av) {
 
             keep_files = opts["keep-files"].as<bool>();
             auto& duration = opts["duration"].as<unsigned>();
-            auto& yaml = opts["conf"].as<seastar::sstring>();
+            auto& yaml = opts["conf"].as<sstring>();
             YAML::Node doc = YAML::LoadFile(yaml);
             auto reqs = doc.as<std::vector<job_config>>();
 
@@ -1148,7 +1149,7 @@ int main(int ac, char** av) {
 
             parallel_for_each(reqs, [&sched_classes] (auto& r) {
                 if (r.shard_info.sched_class != "") {
-                    return seastar::make_ready_future<>();
+                    return make_ready_future<>();
                 }
 
                 return seastar::create_scheduling_group(r.name, r.shard_info.shares).then([&r, &sched_classes] (seastar::scheduling_group sg) {

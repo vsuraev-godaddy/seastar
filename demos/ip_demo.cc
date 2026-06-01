@@ -27,6 +27,7 @@
 #include <seastar/net/native-stack.hh>
 #include <seastar/core/aligned_buffer.hh>
 
+using namespace seastar;
 using namespace net;
 
 int main(int ac, char** av) {
@@ -38,7 +39,7 @@ int main(int ac, char** av) {
     interface netif(std::move(vnet));
     ipv4 inet(&netif);
     inet.set_host_address(ipv4_address("192.168.122.2"));
-    seastar::engine().run();
+    engine().run();
     return 0;
 }
 

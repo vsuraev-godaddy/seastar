@@ -40,10 +40,11 @@
 #include <seastar/util/log.hh>
 #include <seastar/util/tmp_file.hh>
 
+using namespace seastar;
 
 constexpr size_t aligned_size = 4096;
 
-seastar::future<> verify_data_file(file& f, temporary_buffer<char>& rbuf, const temporary_buffer<char>& wbuf) {
+future<> verify_data_file(file& f, temporary_buffer<char>& rbuf, const temporary_buffer<char>& wbuf) {
     return f.dma_read(0, rbuf.get_write(), aligned_size).then([&rbuf, &wbuf] (size_t count) {
         SEASTAR_ASSERT(count == aligned_size);
         fmt::print("    verifying {} bytes\n", count);
@@ -51,30 +52,30 @@ seastar::future<> verify_data_file(file& f, temporary_buffer<char>& rbuf, const 
     });
 }
 
-seastar::future<file> open_data_file(seastar::sstring meta_filename, temporary_buffer<char>& rbuf) {
+future<file> open_data_file(sstring meta_filename, temporary_buffer<char>& rbuf) {
     fmt::print("    retrieving data filename from {}\n", meta_filename);
-    return with_file(seastar::open_file_dma(meta_filename, seastar::open_flags::ro), [&rbuf] (file& f) {
+    return with_file(open_file_dma(meta_filename, open_flags::ro), [&rbuf] (file& f) {
         return f.dma_read(0, rbuf.get_write(), aligned_size).then([&rbuf] (size_t count) {
             SEASTAR_ASSERT(count == aligned_size);
-            auto data_filename = seastar::sstring(rbuf.get());
+            auto data_filename = sstring(rbuf.get());
             fmt::print("    opening {}\n", data_filename);
-            return seastar::open_file_dma(data_filename, seastar::open_flags::ro);
+            return open_file_dma(data_filename, open_flags::ro);
         });
     });
 }
 
-seastar::future<> demo_with_file() {
+future<> demo_with_file() {
     fmt::print("Demonstrating with_file():\n");
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
         auto rnd = std::mt19937(std::random_device()());
         auto dist = std::uniform_int_distribution<int>(0, std::numeric_limits<char>::max());
         auto wbuf = temporary_buffer<char>::aligned(aligned_size, aligned_size);
-        seastar::sstring meta_filename = (t.get_path() / "meta_file").native();
-        seastar::sstring data_filename = (t.get_path() / "data_file").native();
+        sstring meta_filename = (t.get_path() / "meta_file").native();
+        sstring data_filename = (t.get_path() / "data_file").native();
 
         // `with_file` is used to create/open `filename` just around the call to `dma_write`
-        auto write_to_file = [] (const seastar::sstring filename, temporary_buffer<char>& wbuf) {
-            auto count = with_file(seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create), [&wbuf] (file& f) {
+        auto write_to_file = [] (const sstring filename, temporary_buffer<char>& wbuf) {
+            auto count = with_file(open_file_dma(filename, open_flags::rw | open_flags::create), [&wbuf] (file& f) {
                 return f.dma_write(0, wbuf.get(), aligned_size);
             }).get();
             SEASTAR_ASSERT(count == aligned_size);
@@ -105,21 +106,21 @@ seastar::future<> demo_with_file() {
     });
 }
 
-seastar::future<> demo_with_file_close_on_failure() {
+future<> demo_with_file_close_on_failure() {
     fmt::print("\nDemonstrating with_file_close_on_failure():\n");
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
         auto rnd = std::mt19937(std::random_device()());
         auto dist = std::uniform_int_distribution<int>(0, std::numeric_limits<char>::max());
         auto wbuf = temporary_buffer<char>::aligned(aligned_size, aligned_size);
-        seastar::sstring meta_filename = (t.get_path() / "meta_file").native();
-        seastar::sstring data_filename = (t.get_path() / "data_file").native();
+        sstring meta_filename = (t.get_path() / "meta_file").native();
+        sstring data_filename = (t.get_path() / "data_file").native();
 
         // with_file_close_on_failure will close the opened file only if
         // `make_file_output_stream` returns an error. Otherwise, in the error-free path,
         // the opened file is moved to `file_output_stream` that in-turn closes it
         // when the stream is closed.
         auto make_output_stream = [] (std::string_view filename) {
-            return with_file_close_on_failure(seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create), [] (file f) {
+            return with_file_close_on_failure(open_file_dma(filename, open_flags::rw | open_flags::create), [] (file f) {
                 return make_file_output_stream(std::move(f), aligned_size);
             });
         };
@@ -168,11 +169,11 @@ seastar::future<> demo_with_file_close_on_failure() {
 
 static constexpr size_t half_aligned_size = aligned_size / 2;
 
-seastar::future<> demo_with_io_intent() {
+future<> demo_with_io_intent() {
     fmt::print("\nDemonstrating demo_with_io_intent():\n");
     return tmp_dir::do_with_thread([] (tmp_dir& t) {
-        seastar::sstring filename = (t.get_path() / "testfile.tmp").native();
-        auto f = seastar::open_file_dma(filename, seastar::open_flags::rw | seastar::open_flags::create).get();
+        sstring filename = (t.get_path() / "testfile.tmp").native();
+        auto f = open_file_dma(filename, open_flags::rw | open_flags::create).get();
 
         auto rnd = std::mt19937(std::random_device()());
         auto dist = std::uniform_int_distribution<int>(0, std::numeric_limits<char>::max());
@@ -226,7 +227,7 @@ seastar::future<> demo_with_io_intent() {
 }
 
 int main(int ac, char** av) {
-    seastar::app_template app;
+    app_template app;
     return app.run(ac, av, [] {
         return demo_with_file().then([] {
             return demo_with_file_close_on_failure().then([] {

@@ -94,15 +94,15 @@ SEASTAR_THREAD_TEST_CASE(test_renaming_scheuling_groups) {
         const char* prev_name = i%2 ? name2 : name1;
         sleep(std::chrono::microseconds(100000/(i+1))).get();
         rename_scheduling_group(sg, name).get();
-        std::set<seastar::sstring> label_vals = get_label_values(seastar::sstring("scheduler_shares"), seastar::sstring("group"));
+        std::set<sstring> label_vals = get_label_values(sstring("scheduler_shares"), sstring("group"));
         // validate that the name that we *renamed to* is in the stats
-        BOOST_REQUIRE(label_vals.find(seastar::sstring(name)) != label_vals.end());
+        BOOST_REQUIRE(label_vals.find(sstring(name)) != label_vals.end());
         // validate that the name that we *renamed from* is *not* in the stats
-        BOOST_REQUIRE(label_vals.find(seastar::sstring(prev_name)) == label_vals.end());
+        BOOST_REQUIRE(label_vals.find(sstring(prev_name)) == label_vals.end());
     }
 
     smp::invoke_on_all([sg] () {
-        return seastar::do_with(std::uniform_int_distribution<int>(), boost::irange<int>(0, 1000),
+        return do_with(std::uniform_int_distribution<int>(), boost::irange<int>(0, 1000),
                 [sg] (std::uniform_int_distribution<int>& dist, boost::integer_range<int>& rng) {
             // flip a fair coin and rename to one of two options and rename to that
             // scheduling group name, do it 1000 in parallel on all shards so there
@@ -114,10 +114,10 @@ SEASTAR_THREAD_TEST_CASE(test_renaming_scheuling_groups) {
         });
     }).get();
 
-    std::set<seastar::sstring> label_vals = get_label_values(seastar::sstring("scheduler_shares"), seastar::sstring("group"));
+    std::set<sstring> label_vals = get_label_values(sstring("scheduler_shares"), sstring("group"));
     // validate that only one of the names is eventually in the metrics
-    bool name1_found = label_vals.find(seastar::sstring(name1)) != label_vals.end();
-    bool name2_found = label_vals.find(seastar::sstring(name2)) != label_vals.end();
+    bool name1_found = label_vals.find(sstring(name1)) != label_vals.end();
+    bool name2_found = label_vals.find(sstring(name2)) != label_vals.end();
     BOOST_REQUIRE((name1_found && !name2_found) || (name2_found && !name1_found));
 }
 

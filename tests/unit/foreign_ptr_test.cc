@@ -28,6 +28,7 @@
 #include <seastar/core/sleep.hh>
 #include <iostream>
 
+using namespace seastar;
 
 namespace seastar {
 
@@ -36,21 +37,21 @@ extern logger seastar_logger;
 }
 
 SEASTAR_TEST_CASE(make_foreign_ptr_from_lw_shared_ptr) {
-    auto p = make_foreign(seastar::make_lw_shared<seastar::sstring>("foo"));
+    auto p = make_foreign(make_lw_shared<sstring>("foo"));
     BOOST_REQUIRE(p->size() == 3);
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(make_foreign_ptr_from_shared_ptr) {
-    auto p = make_foreign(make_shared<seastar::sstring>("foo"));
+    auto p = make_foreign(make_shared<sstring>("foo"));
     BOOST_REQUIRE(p->size() == 3);
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 
 SEASTAR_TEST_CASE(foreign_ptr_copy_test) {
     return seastar::async([] {
-        auto ptr = make_foreign(make_shared<seastar::sstring>("foo"));
+        auto ptr = make_foreign(make_shared<sstring>("foo"));
         BOOST_REQUIRE(ptr->size() == 3);
         auto ptr2 = ptr.copy().get();
         BOOST_REQUIRE(ptr2->size() == 3);
@@ -58,13 +59,13 @@ SEASTAR_TEST_CASE(foreign_ptr_copy_test) {
 }
 
 SEASTAR_TEST_CASE(foreign_ptr_get_test) {
-    auto p = make_foreign(std::make_unique<seastar::sstring>("foo"));
+    auto p = make_foreign(std::make_unique<sstring>("foo"));
     BOOST_REQUIRE_EQUAL(p.get(), &*p);
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 };
 
 SEASTAR_TEST_CASE(foreign_ptr_release_test) {
-    auto p = make_foreign(std::make_unique<seastar::sstring>("foo"));
+    auto p = make_foreign(std::make_unique<sstring>("foo"));
     auto raw_ptr = p.get();
     BOOST_REQUIRE(bool(p));
     BOOST_REQUIRE(p->size() == 3);
@@ -72,34 +73,34 @@ SEASTAR_TEST_CASE(foreign_ptr_release_test) {
     BOOST_REQUIRE(!bool(p));
     BOOST_REQUIRE(released_p->size() == 3);
     BOOST_REQUIRE_EQUAL(raw_ptr, released_p.get());
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 SEASTAR_TEST_CASE(foreign_ptr_reset_test) {
-    auto fp = make_foreign(std::make_unique<seastar::sstring>("foo"));
+    auto fp = make_foreign(std::make_unique<sstring>("foo"));
     BOOST_REQUIRE(bool(fp));
     BOOST_REQUIRE(fp->size() == 3);
 
-    fp.reset(std::make_unique<seastar::sstring>("foobar"));
+    fp.reset(std::make_unique<sstring>("foobar"));
     BOOST_REQUIRE(bool(fp));
     BOOST_REQUIRE(fp->size() == 6);
 
     fp.reset();
     BOOST_REQUIRE(!bool(fp));
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 class dummy {
     unsigned _cpu;
 public:
-    dummy() : _cpu(seastar::this_shard_id()) { }
-    ~dummy() { BOOST_REQUIRE_EQUAL(_cpu, seastar::this_shard_id()); }
+    dummy() : _cpu(this_shard_id()) { }
+    ~dummy() { BOOST_REQUIRE_EQUAL(_cpu, this_shard_id()); }
 };
 
 SEASTAR_TEST_CASE(foreign_ptr_cpu_test) {
     if (smp::count == 1) {
         std::cerr << "Skipping multi-cpu foreign_ptr tests. Run with --smp=2 to test multi-cpu delete and reset.";
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
     using namespace std::chrono_literals;
@@ -119,7 +120,7 @@ SEASTAR_TEST_CASE(foreign_ptr_cpu_test) {
 SEASTAR_TEST_CASE(foreign_ptr_move_assignment_test) {
     if (smp::count == 1) {
         std::cerr << "Skipping multi-cpu foreign_ptr tests. Run with --smp=2 to test multi-cpu delete and reset.";
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
     using namespace std::chrono_literals;
@@ -144,17 +145,17 @@ SEASTAR_THREAD_TEST_CASE(foreign_ptr_destroy_test) {
 
     using namespace std::chrono_literals;
 
-    std::vector<seastar::promise<bool>> done;
+    std::vector<promise<bool>> done;
     done.resize(smp::count);
 
     struct deferred {
-        std::vector<seastar::promise<bool>>& done;
-        deferred(std::vector<seastar::promise<bool>>& done_)
+        std::vector<promise<bool>>& done;
+        deferred(std::vector<promise<bool>>& done_)
             : done(done_)
         {}
         ~deferred() {
             seastar_logger.info("~deferred");
-            internal::run_in_background([&done = done, shard = seastar::this_shard_id()] {
+            internal::run_in_background([&done = done, shard = this_shard_id()] {
                 return smp::submit_to(0, [&done, shard] {
                     done[shard].set_value(true);
                     done[shard ^ 1].set_value(false);

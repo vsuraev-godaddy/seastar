@@ -26,35 +26,36 @@
 #include <seastar/util/closeable.hh>
 #include <yaml-cpp/yaml.h>
 
+using namespace seastar;
 
 int main(int ac, char** av) {
     namespace bpo = boost::program_options;
 
-    seastar::app_template app;
+    app_template app;
     auto opt_add = app.add_options();
     opt_add
-        ("directory", bpo::value<seastar::sstring>()->default_value("."), "directory to work on")
+        ("directory", bpo::value<sstring>()->default_value("."), "directory to work on")
         ("max-reqsize", bpo::value<unsigned>()->default_value(128u * 1024u), "maximum request size in bytes used when calculating capacity (default: 128kB)")
     ;
 
     return app.run(ac, av, [&] {
         return seastar::async([&] {
             auto& opts = app.configuration();
-            auto& storage = opts["directory"].as<seastar::sstring>();
+            auto& storage = opts["directory"].as<sstring>();
             auto max_reqsz = opts["max-reqsize"].as<unsigned>();
 
             YAML::Emitter out;
             out << YAML::BeginDoc;
             out << YAML::BeginMap;
 
-            seastar::engine().seastar::open_file_dma(storage + "/tempfile", seastar::open_flags::rw | seastar::open_flags::create | seastar::open_flags::exclusive).then([&] (file f) {
+            engine().open_file_dma(storage + "/tempfile", open_flags::rw | open_flags::create | open_flags::exclusive).then([&] (file f) {
                 return with_closeable(std::move(f), [&out, &storage, max_reqsz] (file& f) {
                     return remove_file(storage + "/tempfile").then([&out, &f] {
                         out << YAML::Key << "disk_read_max_length" << YAML::Value << f.disk_read_max_length();
                         out << YAML::Key << "disk_write_max_length" << YAML::Value << f.disk_write_max_length();
                     }).then([&out, &f, max_reqsz] {
                         return f.stat().then([&out, max_reqsz] (auto st) {
-                            auto& ioq = seastar::engine().get_io_queue(st.st_dev);
+                            auto& ioq = engine().get_io_queue(st.st_dev);
                             auto& cfg = ioq.get_config();
 
                             out << YAML::Key << "device" << YAML::Value << st.st_dev;

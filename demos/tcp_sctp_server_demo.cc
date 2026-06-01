@@ -30,6 +30,7 @@
 #include <iostream>
 #include "../apps/lib/stop_signal.hh"
 
+using namespace seastar;
 
 static std::string str_ping{"ping"};
 static std::string str_txtx{"txtx"};
@@ -47,40 +48,40 @@ static bool enable_sctp = false;
 class tcp_server {
     std::vector<server_socket> _tcp_listeners;
     std::vector<server_socket> _sctp_listeners;
-    std::optional<seastar::future<>> _tcp_task;
-    std::optional<seastar::future<>> _sctp_task;
+    std::optional<future<>> _tcp_task;
+    std::optional<future<>> _sctp_task;
 
 public:
-    seastar::future<> listen(ipv4_addr addr) {
+    future<> listen(ipv4_addr addr) {
         if (enable_tcp) {
-            seastar::listen_options lo;
+            listen_options lo;
             lo.proto = transport::TCP;
             lo.reuse_address = true;
-            _tcp_listeners.push_back(seastar::listen(seastar::make_ipv4_address(addr), lo));
+            _tcp_listeners.push_back(seastar::listen(make_ipv4_address(addr), lo));
             _tcp_task = do_accepts(_tcp_listeners);
         }
 
         if (enable_sctp) {
-            seastar::listen_options lo;
+            listen_options lo;
             lo.proto = transport::SCTP;
             lo.reuse_address = true;
-            _sctp_listeners.push_back(seastar::listen(seastar::make_ipv4_address(addr), lo));
+            _sctp_listeners.push_back(seastar::listen(make_ipv4_address(addr), lo));
             _sctp_task = do_accepts(_sctp_listeners);
         }
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
-    seastar::future<> stop() {
+    future<> stop() {
         co_await do_stop(_tcp_listeners, _tcp_task);
         co_await do_stop(_sctp_listeners, _sctp_task);
     }
 
-    seastar::future<> do_accepts(std::vector<server_socket>& listeners) {
+    future<> do_accepts(std::vector<server_socket>& listeners) {
         int which = listeners.size() - 1;
         // Accept in the background.
-        return listeners[which].accept().then([this, &listeners] (seastar::accept_result ar) mutable {
-            seastar::connected_socket fd = std::move(ar.connection);
-            seastar::socket_address addr = std::move(ar.remote_address);
+        return listeners[which].accept().then([this, &listeners] (accept_result ar) mutable {
+            connected_socket fd = std::move(ar.connection);
+            socket_address addr = std::move(ar.remote_address);
             auto conn = new connection(*this, std::move(fd), addr);
             (void)conn->process().then_wrapped([conn] (auto&& f) {
                 delete conn;
@@ -100,7 +101,7 @@ public:
         });
     }
 
-    static seastar::future<> do_stop(std::vector<server_socket>& listeners, std::optional<seastar::future<>>& task) {
+    static future<> do_stop(std::vector<server_socket>& listeners, std::optional<future<>>& task) {
         for (auto& listener : listeners) {
             listener.abort_accept();
         }
@@ -110,18 +111,18 @@ public:
     }
 
     class connection {
-        seastar::connected_socket _fd;
+        connected_socket _fd;
         input_stream<char> _read_buf;
         output_stream<char> _write_buf;
     public:
-        connection(tcp_server& server, seastar::connected_socket&& fd, seastar::socket_address addr)
+        connection(tcp_server& server, connected_socket&& fd, socket_address addr)
             : _fd(std::move(fd))
             , _read_buf(_fd.input())
             , _write_buf(_fd.output()) {}
-        seastar::future<> process() {
+        future<> process() {
              return read();
         }
-        seastar::future<> read() {
+        future<> read() {
             if (_read_buf.eof()) {
                 return make_ready_future();
             }
@@ -155,9 +156,9 @@ public:
                 }
             });
         }
-        seastar::future<> do_write(int end) {
+        future<> do_write(int end) {
             if (end == 0) {
-                return seastar::make_ready_future<>();
+                return make_ready_future<>();
             }
             return _write_buf.write(str_txbuf).then([this] {
                 return _write_buf.flush();
@@ -165,14 +166,14 @@ public:
                 return do_write(end - 1);
             });
         }
-        seastar::future<> tx_test() {
+        future<> tx_test() {
             return do_write(tx_msg_nr).then([this] {
                 return _write_buf.close();
             }).then([] {
-                return seastar::make_ready_future<>();
+                return make_ready_future<>();
             });
         }
-        seastar::future<> do_read() {
+        future<> do_read() {
             return _read_buf.read_exactly(rx_msg_size).then([this] (temporary_buffer<char> buf) {
                 if (buf.size() == 0) {
                     return make_ready_future();
@@ -181,9 +182,9 @@ public:
                 }
             });
         }
-        seastar::future<> rx_test() {
+        future<> rx_test() {
             return do_read().then([] {
-                return seastar::make_ready_future<>();
+                return make_ready_future<>();
             });
         }
     };
@@ -192,7 +193,7 @@ public:
 namespace bpo = boost::program_options;
 
 int main(int ac, char** av) {
-    seastar::app_template app;
+    app_template app;
     app.add_options()
         ("port", bpo::value<uint16_t>()->default_value(10000), "TCP server port")
         ("tcp", bpo::value<std::string>()->default_value("yes"), "tcp listen")
@@ -209,7 +210,7 @@ int main(int ac, char** av) {
                 fmt::print(std::cerr, "Error: no protocols enabled. Use \"--tcp yes\" and/or \"--sctp yes\" to enable\n");
                 return 1;
             }
-            seastar::distributed<tcp_server> server;
+            distributed<tcp_server> server;
             server.start().get();
             auto stop_server = deferred_stop(server);
             // Start listening in the background.

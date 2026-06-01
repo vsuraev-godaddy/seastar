@@ -36,6 +36,7 @@
 #include <seastar/core/with_timeout.hh>
 #include <boost/range/irange.hpp>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 using steady_clock = std::chrono::steady_clock;
 
@@ -56,22 +57,22 @@ SEASTAR_THREAD_TEST_CASE(test_condition_variable_signal_consume) {
 
     with_timeout(steady_clock::now() + 10ms, std::move(f2)).get();
 
-    std::vector<seastar::future<>> waiters;
+    std::vector<future<>> waiters;
     waiters.emplace_back(cv.wait());
     waiters.emplace_back(cv.wait());
     waiters.emplace_back(cv.wait());
 
-    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&seastar::future<>::available)), 0u);
+    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&future<>::available)), 0u);
 
     cv.signal();
 
-    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&seastar::future<>::available)), 1u);
+    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&future<>::available)), 1u);
     // FIFO
     BOOST_REQUIRE_EQUAL(waiters.front().available(), true);
 
     cv.broadcast();
 
-    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&seastar::future<>::available)), 3u);
+    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&future<>::available)), 3u);
 }
 
 SEASTAR_THREAD_TEST_CASE(test_condition_variable_pred) {
@@ -103,12 +104,12 @@ SEASTAR_THREAD_TEST_CASE(test_condition_variable_pred) {
 SEASTAR_THREAD_TEST_CASE(test_condition_variable_signal_break) {
     condition_variable cv;
 
-    std::vector<seastar::future<>> waiters;
+    std::vector<future<>> waiters;
     waiters.emplace_back(cv.wait());
     waiters.emplace_back(cv.wait());
     waiters.emplace_back(cv.wait());
 
-    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&seastar::future<>::available)), 0u);
+    BOOST_REQUIRE_EQUAL(std::count_if(waiters.begin(), waiters.end(), std::mem_fn(&future<>::available)), 0u);
 
     cv.broken();
 
@@ -157,7 +158,7 @@ SEASTAR_THREAD_TEST_CASE(test_condition_variable_pred_wait) {
 
     bool ready = false;
 
-    seastar::timer<> t;
+    timer<> t;
     t.set_callback([&] { ready = true; cv.signal(); });
     t.arm(100ms);
 
@@ -225,12 +226,12 @@ SEASTAR_TEST_CASE(test_condition_variable_signal_consume_coroutine) {
     condition_variable cv;
 
     cv.signal();
-    co_await with_timeout(steady_clock::now() + 10ms, [&]() -> seastar::future<> {
+    co_await with_timeout(steady_clock::now() + 10ms, [&]() -> future<> {
         co_await cv.when();
     }());
 
     try {
-        co_await with_timeout(steady_clock::now() + 10ms, [&]() -> seastar::future<> {
+        co_await with_timeout(steady_clock::now() + 10ms, [&]() -> future<> {
             co_await cv.when();
         }());
         BOOST_FAIL("should not reach");
@@ -243,7 +244,7 @@ SEASTAR_TEST_CASE(test_condition_variable_signal_consume_coroutine) {
     }
 
     try {
-        co_await with_timeout(steady_clock::now() + 10s, [&]() -> seastar::future<> {
+        co_await with_timeout(steady_clock::now() + 10s, [&]() -> future<> {
             co_await cv.when(100ms);
         }());
         BOOST_FAIL("should not reach");
@@ -262,7 +263,7 @@ SEASTAR_TEST_CASE(test_condition_variable_pred_when) {
 
     bool ready = false;
 
-    seastar::timer<> t;
+    timer<> t;
     t.set_callback([&] { ready = true; cv.signal(); });
     t.arm(100ms);
 
@@ -320,7 +321,7 @@ SEASTAR_TEST_CASE(test_condition_variable_when_signal) {
 
     bool ready = false;
 
-    seastar::timer<> t;
+    timer<> t;
     t.set_callback([&] { cv.signal(); ready = true; });
     t.arm(100ms);
 
@@ -335,7 +336,7 @@ SEASTAR_TEST_CASE(test_condition_variable_when_timeout) {
     bool ready = false;
 
     // create "background" fiber
-    auto f = [&]() -> seastar::future<> {
+    auto f = [&]() -> future<> {
         try {
             co_await cv.when(100ms, [&] { return ready; });
         } catch (timed_out_error&) {

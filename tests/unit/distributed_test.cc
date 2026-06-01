@@ -35,6 +35,7 @@
 #include <mutex>
 #include <ranges>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 struct async_service : public seastar::async_sharded_service<async_service> {
@@ -45,32 +46,32 @@ struct async_service : public seastar::async_sharded_service<async_service> {
     void run() {
         auto ref = shared_from_this();
         // Wait a while and check.
-        (void)sleep(std::chrono::milliseconds(100 + 100 * seastar::this_shard_id())).then([this, ref] {
+        (void)sleep(std::chrono::milliseconds(100 + 100 * this_shard_id())).then([this, ref] {
            check();
         });
     }
     virtual void check() {
         SEASTAR_ASSERT(!deleted);
     }
-    seastar::future<> stop() { return seastar::make_ready_future<>(); }
+    future<> stop() { return make_ready_future<>(); }
 };
 
 thread_local bool async_service::deleted = false;
 
 struct X {
-    seastar::sstring echo(seastar::sstring arg) {
+    sstring echo(sstring arg) {
         return arg;
     }
     int cpu_id_squared() const {
-        auto id = seastar::this_shard_id();
+        auto id = this_shard_id();
         return id * id;
     }
-    seastar::future<> stop() { return seastar::make_ready_future<>(); }
+    future<> stop() { return make_ready_future<>(); }
 };
 
 template <typename T, typename Func>
-seastar::future<> do_with_distributed(Func&& func) {
-    auto x = make_shared<seastar::distributed<T>>();
+future<> do_with_distributed(Func&& func) {
+    auto x = make_shared<distributed<T>>();
     return func(*x).finally([x] {
         return x->stop();
     }).finally([x]{});
@@ -79,11 +80,11 @@ seastar::future<> do_with_distributed(Func&& func) {
 SEASTAR_TEST_CASE(test_that_each_core_gets_the_arguments) {
     return do_with_distributed<X>([] (auto& x) {
         return x.start().then([&x] {
-            return x.map_reduce([] (seastar::sstring msg){
+            return x.map_reduce([] (sstring msg){
                 if (msg != "hello") {
                     throw std::runtime_error("wrong message");
                 }
-            }, &X::echo, seastar::sstring("hello"));
+            }, &X::echo, sstring("hello"));
         });
     });
 }
@@ -91,7 +92,7 @@ SEASTAR_TEST_CASE(test_that_each_core_gets_the_arguments) {
 SEASTAR_TEST_CASE(test_functor_version) {
     return do_with_distributed<X>([] (auto& x) {
         return x.start().then([&x] {
-            return x.map_reduce([] (seastar::sstring msg){
+            return x.map_reduce([] (sstring msg){
                 if (msg != "hello") {
                     throw std::runtime_error("wrong message");
                 }
@@ -101,14 +102,14 @@ SEASTAR_TEST_CASE(test_functor_version) {
 }
 
 struct Y {
-    seastar::sstring s;
-    Y(seastar::sstring s) : s(std::move(s)) {}
-    seastar::future<> stop() { return seastar::make_ready_future<>(); }
+    sstring s;
+    Y(sstring s) : s(std::move(s)) {}
+    future<> stop() { return make_ready_future<>(); }
 };
 
 SEASTAR_TEST_CASE(test_constructor_argument_is_passed_to_each_core) {
     return do_with_distributed<Y>([] (auto& y) {
-        return y.start(seastar::sstring("hello")).then([&y] {
+        return y.start(sstring("hello")).then([&y] {
             return y.invoke_on_all([] (Y& y) {
                 if (y.s != "hello") {
                     throw std::runtime_error(format("expected message mismatch, is \"%s\"", y.s));
@@ -119,7 +120,7 @@ SEASTAR_TEST_CASE(test_constructor_argument_is_passed_to_each_core) {
 }
 
 SEASTAR_TEST_CASE(test_map_reduce) {
-    return do_with_distributed<X>([] (seastar::distributed<X>& x) {
+    return do_with_distributed<X>([] (distributed<X>& x) {
         return x.start().then([&x] {
             return x.map_reduce0(std::mem_fn(&X::cpu_id_squared),
                                  0,
@@ -164,9 +165,9 @@ SEASTAR_TEST_CASE(test_map_reduce_lifetime) {
             });
         }
     };
-    return do_with_distributed<X>([] (seastar::distributed<X>& x) {
+    return do_with_distributed<X>([] (distributed<X>& x) {
         return x.start().then([&x] {
-            return seastar::do_with(0L, [&x] (auto& result) {
+            return do_with(0L, [&x] (auto& result) {
                 return x.map_reduce(reduce{result}, map{}).then([&result] {
                     long n = smp::count - 1;
                     long expected = (n * (n + 1) * (2*n + 1)) / 6;
@@ -204,7 +205,7 @@ SEASTAR_TEST_CASE(test_map_reduce0_lifetime) {
             return res + x;
         }
     };
-    return do_with_distributed<X>([] (seastar::distributed<X>& x) {
+    return do_with_distributed<X>([] (distributed<X>& x) {
         return x.start().then([&x] {
             return x.map_reduce0(map{}, 0L, reduce{}).then([] (long result) {
                 long n = smp::count - 1;
@@ -230,7 +231,7 @@ SEASTAR_TEST_CASE(test_map_lifetime) {
             });
         }
     };
-    return do_with_distributed<X>([] (seastar::distributed<X>& x) {
+    return do_with_distributed<X>([] (distributed<X>& x) {
         return x.start().then([&x] {
             return x.map(map{}).then([] (std::vector<int> result) {
                 BOOST_REQUIRE_EQUAL(result.size(), smp::count);
@@ -243,7 +244,7 @@ SEASTAR_TEST_CASE(test_map_lifetime) {
 }
 
 SEASTAR_TEST_CASE(test_async) {
-    return do_with_distributed<async_service>([] (seastar::distributed<async_service>& x) {
+    return do_with_distributed<async_service>([] (distributed<async_service>& x) {
         return x.start().then([&x] {
             return x.invoke_on_all(&async_service::run);
         });
@@ -257,7 +258,7 @@ SEASTAR_TEST_CASE(test_invoke_on_others) {
         struct my_service {
             int counter = 0;
             void up() { ++counter; }
-            seastar::future<> stop() { return seastar::make_ready_future<>(); }
+            future<> stop() { return make_ready_future<>(); }
         };
         for (unsigned c = 0; c < smp::count; ++c) {
             smp::submit_to(c, [c] {
@@ -269,7 +270,7 @@ SEASTAR_TEST_CASE(test_invoke_on_others) {
                         throw std::runtime_error("local modified");
                     }
                     s.invoke_on_all([c](auto& remote) {
-                        if (seastar::this_shard_id() != c) {
+                        if (this_shard_id() != c) {
                             if (remote.counter != 1) {
                                 throw std::runtime_error("remote not modified");
                             }
@@ -292,8 +293,8 @@ SEASTAR_TEST_CASE(test_smp_invoke_on_others) {
         }
 
         smp::invoke_on_all([&calls] {
-            return smp::invoke_on_others([&calls, from = seastar::this_shard_id()] {
-                calls[seastar::this_shard_id()].emplace_back(from);
+            return smp::invoke_on_others([&calls, from = this_shard_id()] {
+                calls[this_shard_id()].emplace_back(from);
             });
         }).get();
 
@@ -311,14 +312,14 @@ struct remote_worker {
     unsigned current = 0;
     unsigned max_concurrent_observed = 0;
     unsigned expected_max;
-    seastar::semaphore sem{0};
+    semaphore sem{0};
     remote_worker(unsigned expected_max) : expected_max(expected_max) {
     }
-    seastar::future<> do_work() {
+    future<> do_work() {
         ++current;
         max_concurrent_observed = std::max(current, max_concurrent_observed);
         if (max_concurrent_observed >= expected_max && sem.current() == 0) {
-            sem.signal(seastar::semaphore::max_counter());
+            sem.signal(semaphore::max_counter());
         }
         return sem.wait().then([this] {
             // Sleep a bit to check if the concurrency goes over the max
@@ -328,7 +329,7 @@ struct remote_worker {
             });
         });
     }
-    seastar::future<> do_remote_work(shard_id t, smp_service_group ssg) {
+    future<> do_remote_work(shard_id t, smp_service_group ssg) {
         return smp::submit_to(t,  ssg, [this] {
             return do_work();
         });
@@ -379,7 +380,7 @@ SEASTAR_TEST_CASE(test_smp_timeout) {
         ssgc1.max_nonlocal_requests = 1;
         auto ssg1 = create_smp_service_group(ssgc1).get();
 
-        auto _ = seastar::defer([ssg1] () noexcept {
+        auto _ = defer([ssg1] () noexcept {
             destroy_smp_service_group(ssg1).get();
         });
 
@@ -395,7 +396,7 @@ SEASTAR_TEST_CASE(test_smp_timeout) {
             std::unique_lock<std::mutex> lk(mut);
             std::cout << "Request no. 1 done" << std::endl;
         });
-        // Consume the only unit from the seastar::semaphore.
+        // Consume the only unit from the semaphore.
         auto fut2 = smp::submit_to(other_shard, ssg1, [] {
             std::cout << "Running request no. 2 - done" << std::endl;
         });
@@ -405,7 +406,7 @@ SEASTAR_TEST_CASE(test_smp_timeout) {
         });
 
         {
-            auto notify = seastar::defer([lk = std::move(lk)] () noexcept { });
+            auto notify = defer([lk = std::move(lk)] () noexcept { });
 
             try {
                 fut_timedout.get();
@@ -424,15 +425,15 @@ SEASTAR_TEST_CASE(test_smp_timeout) {
 
 SEASTAR_THREAD_TEST_CASE(test_sharded_parameter) {
     struct dependency {
-        unsigned val = seastar::this_shard_id() * 7;
+        unsigned val = this_shard_id() * 7;
     };
     struct some_service {
         bool ok = false;
         some_service(unsigned non_shard_dependent, unsigned shard_dependent, dependency& dep, unsigned shard_dependent_2) {
             ok =
                     non_shard_dependent == 43
-                    && shard_dependent == seastar::this_shard_id() * 3
-                    && dep.val == seastar::this_shard_id() * 7
+                    && shard_dependent == this_shard_id() * 3
+                    && dep.val == this_shard_id() * 7
                     && shard_dependent_2 == -dep.val;
         }
     };
@@ -443,7 +444,7 @@ SEASTAR_THREAD_TEST_CASE(test_sharded_parameter) {
     sharded<some_service> s_service;
     s_service.start(
             43, // should be copied verbatim
-            sharded_parameter([] { return seastar::this_shard_id() * 3; }),
+            sharded_parameter([] { return this_shard_id() * 3; }),
             std::ref(s_dep),
             sharded_parameter([] (dependency& d) { return -d.val; }, std::ref(s_dep))
             ).get();

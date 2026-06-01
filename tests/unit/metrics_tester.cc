@@ -30,13 +30,14 @@
 #include <map>
 #include <vector>
 #include <yaml-cpp/yaml.h>
+using namespace seastar;
 using namespace std::chrono_literals;
 namespace sm = seastar::metrics;
 struct serializer {};
 
 struct metric_def {
-    seastar::sstring name;
-    seastar::sstring type;
+    sstring name;
+    sstring type;
     std::vector<double> values;
     std::vector<sm::label_instance> labels;
 };
@@ -127,12 +128,12 @@ sm::impl::metric_definition_impl make_metrics_definition(const metric_def& jc) {
 int main(int ac, char** av) {
     namespace bpo = boost::program_options;
 
-    seastar::app_template app;
+    app_template app;
     auto opt_add = app.add_options();
     opt_add
-        ("listen", bpo::value<seastar::sstring>()->default_value("0.0.0.0"), "address to start Prometheus server on")
+        ("listen", bpo::value<sstring>()->default_value("0.0.0.0"), "address to start Prometheus server on")
         ("port", bpo::value<uint16_t>()->default_value(9180), "Prometheus port")
-        ("conf", bpo::value<seastar::sstring>()->default_value("./conf.yaml"), "config with jobs and options")
+        ("conf", bpo::value<sstring>()->default_value("./conf.yaml"), "config with jobs and options")
     ;
     httpd::http_server_control prometheus_server;
 
@@ -141,9 +142,9 @@ int main(int ac, char** av) {
             sm::metric_groups _metrics;
             seastar_apps_lib::stop_signal stop_signal;
             auto& opts = app.configuration();
-            auto& listen = opts["listen"].as<seastar::sstring>();
+            auto& listen = opts["listen"].as<sstring>();
             auto& port = opts["port"].as<uint16_t>();
-            auto& conf = opts["conf"].as<seastar::sstring>();
+            auto& conf = opts["conf"].as<sstring>();
 
             YAML::Node doc = YAML::LoadFile(conf);
             auto cfg = doc.as<config>();
@@ -177,7 +178,7 @@ int main(int ac, char** av) {
             prometheus::config pctx;
             pctx.allow_protobuf = true;
             prometheus::start(prometheus_server, pctx).get();
-            prometheus_server.listen(seastar::socket_address{listen, port}).handle_exception([] (auto ep) {
+            prometheus_server.listen(socket_address{listen, port}).handle_exception([] (auto ep) {
                 return make_exception_future<>(ep);
             }).get();
 

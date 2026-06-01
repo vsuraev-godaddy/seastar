@@ -39,6 +39,7 @@ module seastar;
 
 static std::atomic<bool> abort_on_internal_error{false};
 
+using namespace seastar;
 
 bool seastar::set_abort_on_internal_error(bool do_abort) noexcept {
     return abort_on_internal_error.exchange(do_abort);

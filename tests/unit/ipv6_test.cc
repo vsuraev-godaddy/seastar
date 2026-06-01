@@ -26,11 +26,12 @@
 #include <seastar/core/thread.hh>
 #include <seastar/util/log.hh>
 
+using namespace seastar;
 
 static logger iplog("ipv6");
 
 static bool check_ipv6_support() {
-    if (!seastar::engine().net().supports_ipv6()) {
+    if (!engine().net().supports_ipv6()) {
         iplog.info("No IPV6 support detected. Skipping...");
         return false;
     }
@@ -39,7 +40,7 @@ static bool check_ipv6_support() {
 
 SEASTAR_TEST_CASE(udp_packet_test) {
     if (!check_ipv6_support()) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
     auto sc = make_bound_datagram_channel(ipv6_addr{"::1"});
@@ -61,7 +62,7 @@ SEASTAR_TEST_CASE(udp_packet_test) {
             BOOST_REQUIRE_EQUAL(src, pkt.get_src());
             auto dst = pkt.get_dst();
             // Don't always get a dst address.
-            if (dst != seastar::socket_address()) {
+            if (dst != socket_address()) {
                 BOOST_REQUIRE_EQUAL(a, pkt.get_dst());
             }
         });
@@ -70,11 +71,11 @@ SEASTAR_TEST_CASE(udp_packet_test) {
 
 SEASTAR_TEST_CASE(tcp_packet_test) {
     if (!check_ipv6_support()) {
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }
 
     return async([] {
-        auto sc = server_socket(seastar::engine().net().listen(ipv6_addr{"::1"}, {}));
+        auto sc = server_socket(engine().net().listen(ipv6_addr{"::1"}, {}));
         auto la = sc.local_address();
 
         BOOST_REQUIRE(la.addr().is_ipv6());
@@ -93,7 +94,7 @@ SEASTAR_TEST_CASE(tcp_packet_test) {
         using tmp_buf = stop_consuming_type::tmp_buf;
 
         in.consume([](tmp_buf buf) {
-            return seastar::make_ready_future<consumption_result_type>(stop_consuming<char>({}));
+            return make_ready_future<consumption_result_type>(stop_consuming<char>({}));
         }).get();
 
         strm.close().get();
@@ -110,12 +111,12 @@ SEASTAR_TEST_CASE(ipv6_equal_test) {
     const std::string str_addr2{"0123:4567:89ab:cdef:3210:0123:4567:89ab"};
     const std::string str_addr3{"abcd:fedc:ba98:7654:3210:0123:4567:8900"};
 
-    seastar::socket_address sock_addr1(ipv6_addr(str_addr1, port));
-    seastar::socket_address sock_addr2(ipv6_addr(str_addr2, port));
-    seastar::socket_address sock_addr3(ipv6_addr(str_addr1, port));
+    socket_address sock_addr1(ipv6_addr(str_addr1, port));
+    socket_address sock_addr2(ipv6_addr(str_addr2, port));
+    socket_address sock_addr3(ipv6_addr(str_addr1, port));
 
-    seastar::socket_address sock_addr4(ipv6_addr(str_addr3, port));
-    seastar::socket_address sock_addr5(ipv6_addr(str_addr1, port2));
+    socket_address sock_addr4(ipv6_addr(str_addr3, port));
+    socket_address sock_addr5(ipv6_addr(str_addr1, port2));
 
     BOOST_CHECK_NE(sock_addr1, sock_addr2);
     BOOST_CHECK_EQUAL(sock_addr1, sock_addr3);

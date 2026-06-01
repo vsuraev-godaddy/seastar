@@ -37,6 +37,7 @@
 #include <version>
 #endif
 
+using namespace seastar;
 
 static_assert(std::weakly_incrementable<chunked_fifo<int>::iterator>);
 static_assert(std::weakly_incrementable<chunked_fifo<int>::const_iterator>);

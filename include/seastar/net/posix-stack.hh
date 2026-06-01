@@ -36,6 +36,7 @@ namespace seastar {
 
 namespace net {
 
+using namespace seastar;
 
 struct posix_stack_options : public program_options::option_group {
     /// \brief Create single-shard-sockets
@@ -71,7 +72,7 @@ class conntrack {
         }
     };
 
-    seastar::lw_shared_ptr<load_balancer> _lb;
+    lw_shared_ptr<load_balancer> _lb;
     void closed_cpu(shard_id cpu) {
         _lb->closed_cpu(cpu);
     }
@@ -79,11 +80,11 @@ public:
     class handle {
         shard_id _host_cpu;
         shard_id _target_cpu;
-        foreign_ptr<seastar::lw_shared_ptr<load_balancer>> _lb;
+        foreign_ptr<lw_shared_ptr<load_balancer>> _lb;
     public:
         handle() : _lb(nullptr) {}
-        handle(shard_id cpu, seastar::lw_shared_ptr<load_balancer> lb)
-            : _host_cpu(seastar::this_shard_id())
+        handle(shard_id cpu, lw_shared_ptr<load_balancer> lb)
+            : _host_cpu(this_shard_id())
             , _target_cpu(cpu)
             , _lb(make_foreign(std::move(lb))) {}
 
@@ -104,7 +105,7 @@ public:
     };
     friend class handle;
 
-    conntrack() : _lb(seastar::make_lw_shared<load_balancer>()) {}
+    conntrack() : _lb(make_lw_shared<load_balancer>()) {}
     handle get_handle() {
         return handle(_lb->next_cpu(), _lb);
     }
@@ -124,8 +125,8 @@ public:
             std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator)
             : _buffer_allocator(allocator), _fd(std::move(fd)), _config(config) {
     }
-    seastar::future<temporary_buffer<char>> get() override;
-    seastar::future<> close() override;
+    future<temporary_buffer<char>> get() override;
+    future<> close() override;
 };
 
 class posix_data_sink_impl : public data_sink_impl {
@@ -134,46 +135,46 @@ class posix_data_sink_impl : public data_sink_impl {
 public:
     explicit posix_data_sink_impl(pollable_fd fd) : _fd(std::move(fd)) {}
     using data_sink_impl::put;
-    seastar::future<> put(packet p) override;
-    seastar::future<> put(temporary_buffer<char> buf) override;
-    seastar::future<> close() override;
+    future<> put(packet p) override;
+    future<> put(temporary_buffer<char> buf) override;
+    future<> close() override;
     bool can_batch_flushes() const noexcept override { return true; }
     void on_batch_flush_error() noexcept override;
 };
 
 class posix_ap_server_socket_impl : public server_socket_impl {
-    using protocol_and_socket_address = std::tuple<int, seastar::socket_address>;
+    using protocol_and_socket_address = std::tuple<int, socket_address>;
     struct connection {
         pollable_fd fd;
-        seastar::socket_address addr;
+        socket_address addr;
         conntrack::handle connection_tracking_handle;
-        connection(pollable_fd xfd, seastar::socket_address xaddr, conntrack::handle cth) : fd(std::move(xfd)), addr(xaddr), connection_tracking_handle(std::move(cth)) {}
+        connection(pollable_fd xfd, socket_address xaddr, conntrack::handle cth) : fd(std::move(xfd)), addr(xaddr), connection_tracking_handle(std::move(cth)) {}
     };
     using port_map_t = std::unordered_set<protocol_and_socket_address>;
-    using sockets_map_t = std::unordered_map<protocol_and_socket_address, seastar::promise<seastar::accept_result>>;
+    using sockets_map_t = std::unordered_map<protocol_and_socket_address, promise<accept_result>>;
     using conn_map_t = std::unordered_multimap<protocol_and_socket_address, connection>;
     static thread_local port_map_t ports;
     static thread_local sockets_map_t sockets;
     static thread_local conn_map_t conn_q;
     int _protocol;
-    seastar::socket_address _sa;
+    socket_address _sa;
     std::pmr::polymorphic_allocator<char>* _allocator;
 public:
-    explicit posix_ap_server_socket_impl(int protocol, seastar::socket_address sa, std::pmr::polymorphic_allocator<char>* allocator = memory::malloc_allocator);
+    explicit posix_ap_server_socket_impl(int protocol, socket_address sa, std::pmr::polymorphic_allocator<char>* allocator = memory::malloc_allocator);
     ~posix_ap_server_socket_impl();
-    virtual seastar::future<seastar::accept_result> accept() override;
+    virtual future<accept_result> accept() override;
     virtual void abort_accept() override;
-    seastar::socket_address local_address() const override {
+    socket_address local_address() const override {
         return _sa;
     }
-    static void move_connected_socket(int protocol, seastar::socket_address sa, pollable_fd fd, seastar::socket_address addr, conntrack::handle handle, std::pmr::polymorphic_allocator<char>* allocator);
+    static void move_connected_socket(int protocol, socket_address sa, pollable_fd fd, socket_address addr, conntrack::handle handle, std::pmr::polymorphic_allocator<char>* allocator);
 
     template <typename T>
     friend class std::hash;
 };
 
 class posix_server_socket_impl : public server_socket_impl {
-    seastar::socket_address _sa;
+    socket_address _sa;
     int _protocol;
     pollable_fd _lfd;
     conntrack _conntrack;
@@ -181,25 +182,25 @@ class posix_server_socket_impl : public server_socket_impl {
     shard_id _fixed_cpu;
     std::pmr::polymorphic_allocator<char>* _allocator;
 public:
-    explicit posix_server_socket_impl(int protocol, seastar::socket_address sa, pollable_fd lfd,
+    explicit posix_server_socket_impl(int protocol, socket_address sa, pollable_fd lfd,
         server_socket::load_balancing_algorithm lba, shard_id fixed_cpu,
         std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) : _sa(sa), _protocol(protocol), _lfd(std::move(lfd)), _lba(lba), _fixed_cpu(fixed_cpu), _allocator(allocator) {}
-    virtual seastar::future<seastar::accept_result> accept() override;
+    virtual future<accept_result> accept() override;
     virtual void abort_accept() override;
-    virtual seastar::socket_address local_address() const override;
+    virtual socket_address local_address() const override;
 };
 
 class posix_reuseport_server_socket_impl : public server_socket_impl {
-    seastar::socket_address _sa;
+    socket_address _sa;
     int _protocol;
     pollable_fd _lfd;
     std::pmr::polymorphic_allocator<char>* _allocator;
 public:
-    explicit posix_reuseport_server_socket_impl(int protocol, seastar::socket_address sa, pollable_fd lfd,
+    explicit posix_reuseport_server_socket_impl(int protocol, socket_address sa, pollable_fd lfd,
         std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) : _sa(sa), _protocol(protocol), _lfd(std::move(lfd)), _allocator(allocator) {}
-    virtual seastar::future<seastar::accept_result> accept() override;
+    virtual future<accept_result> accept() override;
     virtual void abort_accept() override;
-    virtual seastar::socket_address local_address() const override;
+    virtual socket_address local_address() const override;
 };
 
 class posix_network_stack : public network_stack {
@@ -209,13 +210,13 @@ protected:
     std::pmr::polymorphic_allocator<char>* _allocator;
 public:
     explicit posix_network_stack(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator);
-    virtual server_socket listen(seastar::socket_address sa, seastar::listen_options opts) override;
+    virtual server_socket listen(socket_address sa, listen_options opts) override;
     virtual ::seastar::socket socket() override;
-    virtual seastar::net::udp_channel make_udp_channel(const seastar::socket_address&) override;
-    virtual seastar::net::datagram_channel make_unbound_datagram_channel(sa_family_t) override;
-    virtual seastar::net::datagram_channel make_bound_datagram_channel(const seastar::socket_address& local) override;
-    static seastar::future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) {
-        return seastar::make_ready_future<std::unique_ptr<network_stack>>(std::unique_ptr<network_stack>(new posix_network_stack(opts, allocator)));
+    virtual net::udp_channel make_udp_channel(const socket_address&) override;
+    virtual net::datagram_channel make_unbound_datagram_channel(sa_family_t) override;
+    virtual net::datagram_channel make_bound_datagram_channel(const socket_address& local) override;
+    static future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) {
+        return make_ready_future<std::unique_ptr<network_stack>>(std::unique_ptr<network_stack>(new posix_network_stack(opts, allocator)));
     }
     virtual bool has_per_core_namespace() override { return _reuseport; };
     bool supports_ipv6() const override;
@@ -229,9 +230,9 @@ private:
     const bool _reuseport;
 public:
     posix_ap_network_stack(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator);
-    virtual server_socket listen(seastar::socket_address sa, seastar::listen_options opts) override;
-    static seastar::future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) {
-        return seastar::make_ready_future<std::unique_ptr<network_stack>>(std::unique_ptr<network_stack>(new posix_ap_network_stack(opts, allocator)));
+    virtual server_socket listen(socket_address sa, listen_options opts) override;
+    static future<std::unique_ptr<network_stack>> create(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator=memory::malloc_allocator) {
+        return make_ready_future<std::unique_ptr<network_stack>>(std::unique_ptr<network_stack>(new posix_ap_network_stack(opts, allocator)));
     }
 };
 

@@ -28,11 +28,12 @@
 #include "../apps/lib/stop_signal.hh"
 #include "tls_echo_server.hh"
 
+using namespace seastar;
 namespace bpo = boost::program_options;
 
 
 int main(int ac, char** av) {
-    seastar::app_template app;
+    app_template app;
     app.add_options()
                     ("port", bpo::value<uint16_t>()->default_value(10000), "Server port")
                     ("address", bpo::value<std::string>()->default_value("127.0.0.1"), "Server address")
@@ -51,7 +52,7 @@ int main(int ac, char** av) {
             auto verbose = config["verbose"].as<bool>();
 
             std::cout << "Starting..." << std::endl;
-            seastar::net::inet_address a = seastar::net::dns::resolve_name(addr).get();
+            net::inet_address a = net::dns::resolve_name(addr).get();
 
             ipv4_addr ia(a, port);
 
@@ -60,7 +61,7 @@ int main(int ac, char** av) {
             auto stop_server = deferred_stop(server);
 
             try {
-                server.invoke_on_all(&echoserver::listen, seastar::socket_address(ia), seastar::sstring(crt), seastar::sstring(key), seastar::tls::client_auth::NONE).get();
+                server.invoke_on_all(&echoserver::listen, socket_address(ia), sstring(crt), sstring(key), tls::client_auth::NONE).get();
             } catch (...) {
                 std::cerr << "Error: " << std::current_exception() << std::endl;
                 return 1;

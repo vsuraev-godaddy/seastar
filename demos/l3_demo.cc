@@ -25,13 +25,14 @@
 #include <seastar/net/native-stack.hh>
 #include <iostream>
 
+using namespace seastar;
 using namespace net;
 
 void dump_arp_packets(l3_protocol& proto) {
     // FIXME: ignored future
     (void)proto.receive([] (packet p, ethernet_address from) {
         std::cout << "seen arp packet\n";
-        return seastar::make_ready_future<>();
+        return make_ready_future<>();
     }, [] (forward_hash& out_hash_data, packet& p, size_t off) {return false;});
 }
 
@@ -42,7 +43,7 @@ int main(int ac, char** av) {
     interface netif(std::move(vnet));
     l3_protocol arp(&netif, eth_protocol_num::arp, []{ return std::optional<l3_protocol::l3packet>(); });
     dump_arp_packets(arp);
-    seastar::engine().run();
+    engine().run();
     return 0;
 }
 

@@ -33,6 +33,7 @@
 #include <seastar/util/later.hh>
 #include <boost/range/irange.hpp>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_TEST_CASE(test_no_abortable_operations) {
@@ -77,7 +78,7 @@ SEASTAR_TEST_CASE(test_no_abortable_operations) {
     BOOST_REQUIRE_EQUAL(fifo.size(), 0u);
     BOOST_REQUIRE(!bool(fifo));
 
-    return seastar::make_ready_future<>();
+    return make_ready_future<>();
 }
 
 SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
@@ -88,7 +89,7 @@ SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
     };
 
     internal::abortable_fifo<int, my_expiry> fifo(my_expiry{expired});
-    seastar::abort_source as;
+    abort_source as;
 
     fifo.push_back(1, as);
 
@@ -107,7 +108,7 @@ SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
     BOOST_REQUIRE_EQUAL(expired[0], 1);
 
     expired.clear();
-    as = seastar::abort_source();
+    as = abort_source();
 
     fifo.push_back(1);
     fifo.push_back(2, as);
@@ -130,7 +131,7 @@ SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
 
     expired.clear();
 
-    seastar::abort_source as1, as2;
+    abort_source as1, as2;
 
     fifo.push_back(1, as1);
     fifo.push_back(2, as1);
@@ -156,7 +157,7 @@ SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
 
     expired.clear();
 
-    as = seastar::abort_source();
+    as = abort_source();
 
     fifo.push_back(1);
     fifo.push_back(2, as);
@@ -179,7 +180,7 @@ SEASTAR_THREAD_TEST_CASE(test_abortable_operations) {
     BOOST_REQUIRE_EQUAL(fifo.size(), 0u);
 
     expired.clear();
-    as = seastar::abort_source();
+    as = abort_source();
 
     fifo.push_back(1);
     fifo.push_back(2, as);
@@ -213,7 +214,7 @@ SEASTAR_THREAD_TEST_CASE(test_abort_exception) {
     internal::abortable_fifo<int, my_expiry> fifo(my_expiry{expired});
     auto aoe = abort_on_expiry<manual_clock>(manual_clock::now() + 1s);
 
-    fifo.push_back(1, aoe.seastar::abort_source());
+    fifo.push_back(1, aoe.abort_source());
 
     BOOST_REQUIRE(!fifo.empty());
     BOOST_REQUIRE_EQUAL(fifo.size(), 1u);

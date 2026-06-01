@@ -1874,7 +1874,7 @@ configure(std::vector<resource::memory> m, bool mbind,
     if (hugetlbfs_path) {
         // std::function is copyable, but file_desc is not, so we must use
         // a shared_ptr to allow sys_alloc to be copied around
-        auto fdp = seastar::make_lw_shared<file_desc>(file_desc::temporary(*hugetlbfs_path));
+        auto fdp = make_lw_shared<file_desc>(file_desc::temporary(*hugetlbfs_path));
         sys_alloc = [fdp] (void* where, size_t how_much) {
             return allocate_hugetlbfs_memory(*fdp, where, how_much);
         };
@@ -2179,11 +2179,11 @@ void on_allocation_failure(size_t size) {
     }
 }
 
-seastar::sstring generate_memory_diagnostics_report() {
+sstring generate_memory_diagnostics_report() {
     seastar::internal::log_buf buf;
     auto it = buf.back_insert_begin();
     do_dump_memory_diagnostics(it);
-    return seastar::sstring(buf.data(), buf.size());
+    return sstring(buf.data(), buf.size());
 }
 
 static void trigger_error_injector() {
@@ -2709,7 +2709,7 @@ void set_additional_diagnostics_producer(noncopyable_function<void(memory_diagno
     // Ignore, not supported for default allocator.
 }
 
-seastar::sstring generate_memory_diagnostics_report() {
+sstring generate_memory_diagnostics_report() {
     // Ignore, not supported for default allocator.
     return {};
 }

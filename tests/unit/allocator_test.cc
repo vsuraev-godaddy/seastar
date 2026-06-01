@@ -32,6 +32,7 @@
 #include <chrono>
 #include <boost/program_options.hpp>
 
+using namespace seastar;
 
 struct allocation {
     size_t n;

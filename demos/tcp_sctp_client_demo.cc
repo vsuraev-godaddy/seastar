@@ -26,6 +26,7 @@
 #include <seastar/core/print.hh>
 #include <seastar/core/units.hh>
 
+using namespace seastar;
 using namespace net;
 using namespace std::chrono_literals;
 
@@ -36,7 +37,7 @@ static int tx_msg_nr = tx_msg_total_size / tx_msg_size;
 static std::string str_txbuf(tx_msg_size, 'X');
 
 class client;
-seastar::distributed<client> clients;
+distributed<client> clients;
 
 transport protocol = transport::TCP;
 
@@ -53,18 +54,18 @@ private:
     unsigned _num_reported;
 public:
     class connection {
-        seastar::connected_socket _fd;
+        connected_socket _fd;
         input_stream<char> _read_buf;
         output_stream<char> _write_buf;
         size_t _bytes_read = 0;
         size_t _bytes_write = 0;
     public:
-        connection(seastar::connected_socket&& fd)
+        connection(connected_socket&& fd)
             : _fd(std::move(fd))
             , _read_buf(_fd.input())
             , _write_buf(_fd.output()) {}
 
-        seastar::future<> do_read() {
+        future<> do_read() {
             return _read_buf.read_exactly(rx_msg_size).then([this] (temporary_buffer<char> buf) {
                 _bytes_read += buf.size();
                 if (buf.size() == 0) {
@@ -75,7 +76,7 @@ public:
             });
         }
 
-        seastar::future<> do_write(int end) {
+        future<> do_write(int end) {
             if (end == 0) {
                 return make_ready_future();
             }
@@ -87,7 +88,7 @@ public:
             });
         }
 
-        seastar::future<> ping(int times) {
+        future<> ping(int times) {
             return _write_buf.write("ping").then([this] {
                 return _write_buf.flush();
             }).then([this, times] {
@@ -110,30 +111,30 @@ public:
             });
         }
 
-        seastar::future<size_t> rxrx() {
+        future<size_t> rxrx() {
             return _write_buf.write("rxrx").then([this] {
                 return _write_buf.flush();
             }).then([this] {
                 return do_write(tx_msg_nr).then([this] {
                     return _write_buf.close();
                 }).then([this] {
-                    return seastar::make_ready_future<size_t>(_bytes_write);
+                    return make_ready_future<size_t>(_bytes_write);
                 });
             });
         }
 
-        seastar::future<size_t> txtx() {
+        future<size_t> txtx() {
             return _write_buf.write("txtx").then([this] {
                 return _write_buf.flush();
             }).then([this] {
                 return do_read().then([this] {
-                    return seastar::make_ready_future<size_t>(_bytes_read);
+                    return make_ready_future<size_t>(_bytes_read);
                 });
             });
         }
     };
 
-    seastar::future<> ping_test(connection *conn) {
+    future<> ping_test(connection *conn) {
         auto started = lowres_clock::now();
         return conn->ping(_pings_per_connection).then([started] {
             auto finished = lowres_clock::now();
@@ -141,7 +142,7 @@ public:
         });
     }
 
-    seastar::future<> rxrx_test(connection *conn) {
+    future<> rxrx_test(connection *conn) {
         auto started = lowres_clock::now();
         return conn->rxrx().then([started] (size_t bytes) {
             auto finished = lowres_clock::now();
@@ -149,7 +150,7 @@ public:
         });
     }
 
-    seastar::future<> txtx_test(connection *conn) {
+    future<> txtx_test(connection *conn) {
         auto started = lowres_clock::now();
         return conn->txtx().then([started] (size_t bytes) {
             auto finished = lowres_clock::now();
@@ -174,7 +175,7 @@ public:
             fmt::print(std::cout, "Requests/Sec: {}\n",
                 static_cast<double>(_total_pings) / secs);
             (void)clients.stop().then([] {
-                seastar::engine().exit(0);
+                engine().exit(0);
             });
         }
     }
@@ -197,20 +198,20 @@ public:
             fmt::print(std::cout, "Bandwidth(Gbits/Sec): {}\n",
                 static_cast<double>((_processed_bytes * 8)) / (1000 * 1000 * 1000) / secs);
             (void)clients.stop().then([] {
-                seastar::engine().exit(0);
+                engine().exit(0);
             });
         }
     }
 
-    seastar::future<> start(ipv4_addr server_addr, std::string test, unsigned ncon) {
+    future<> start(ipv4_addr server_addr, std::string test, unsigned ncon) {
         _server_addr = server_addr;
         _concurrent_connections = ncon * smp::count;
         _total_pings = _pings_per_connection * _concurrent_connections;
         _test = test;
 
         for (unsigned i = 0; i < ncon; i++) {
-            seastar::socket_address local = seastar::socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}});
-            (void)connect(seastar::make_ipv4_address(server_addr), local, protocol).then([this, test] (seastar::connected_socket fd) {
+            socket_address local = socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}});
+            (void)connect(make_ipv4_address(server_addr), local, protocol).then([this, test] (connected_socket fd) {
                 auto conn = new connection(std::move(fd));
                 (void)(this->*tests.at(test))(conn).then_wrapped([conn] (auto&& f) {
                     delete conn;
@@ -224,18 +225,18 @@ public:
         }
         return make_ready_future();
     }
-    seastar::future<> stop() {
+    future<> stop() {
         return make_ready_future();
     }
 
-    typedef seastar::future<> (client::*test_fn)(connection *conn);
+    typedef future<> (client::*test_fn)(connection *conn);
     static const std::map<std::string, test_fn> tests;
 };
 
 namespace bpo = boost::program_options;
 
 int main(int ac, char ** av) {
-    seastar::app_template app;
+    app_template app;
     app.add_options()
         ("server", bpo::value<std::string>()->required(), "Server address")
         ("test", bpo::value<std::string>()->default_value("ping"), "test type(ping | rxrx | txtx)")
@@ -256,12 +257,12 @@ int main(int ac, char ** av) {
             protocol = transport::SCTP;
         } else {
             fmt::print(std::cerr, "Error: --proto=tcp|sctp\n");
-            return seastar::engine().exit(1);
+            return engine().exit(1);
         }
 
         if (!client::tests.count(test)) {
             fmt::print(std::cerr, "Error: -test=ping | rxrx | txtx\n");
-            return seastar::engine().exit(1);
+            return engine().exit(1);
         }
 
         (void)clients.start().then([server, test, ncon] () {

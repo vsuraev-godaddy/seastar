@@ -9,6 +9,7 @@
 #include <seastar/util/defer.hh>
 #include "loopback_socket.hh"
 
+using namespace seastar;
 using namespace seastar::experimental;
 using namespace std::literals::string_view_literals;
 
@@ -30,7 +31,7 @@ std::string build_request(std::string_view key_base64, std::string_view subproto
         subprotocol_line);
 }
 
-seastar::future<> test_websocket_handshake_common(std::string subprotocol) {
+future<> test_websocket_handshake_common(std::string subprotocol) {
     return seastar::async([=] {
         const std::string request = build_request("dGhlIHNhbXBsZSBub25jZQ==", subprotocol);
 
@@ -38,23 +39,23 @@ seastar::future<> test_websocket_handshake_common(std::string subprotocol) {
         loopback_socket_impl lsi(factory);
 
         auto acceptor = factory.get_server_socket().accept();
-        auto connector = lsi.connect(seastar::socket_address(), seastar::socket_address());
-        seastar::connected_socket sock = connector.get();
+        auto connector = lsi.connect(socket_address(), socket_address());
+        connected_socket sock = connector.get();
         auto input = sock.input();
         auto output = sock.output();
 
         websocket::server dummy;
         dummy.register_handler(subprotocol, [] (input_stream<char>& in,
                         output_stream<char>& out) {
-                return seastar::repeat([&in, &out]() {
+                return repeat([&in, &out]() {
                     return in.read().then([&out](temporary_buffer<char> f) {
                         std::cerr << "f.size(): " << f.size() << "\n";
                         if (f.empty()) {
-                            return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
+                            return make_ready_future<stop_iteration>(stop_iteration::yes);
                         } else {
                             return out.write(std::move(f)).then([&out]() {
                                 return out.flush().then([] {
-                                    return seastar::make_ready_future<stop_iteration>(stop_iteration::no);
+                                    return make_ready_future<stop_iteration>(stop_iteration::no);
                                 });
                             });
                         }
@@ -62,8 +63,8 @@ seastar::future<> test_websocket_handshake_common(std::string subprotocol) {
                 });
             });
         websocket::server_connection conn(dummy, acceptor.get().connection);
-        seastar::future<> serve = conn.process();
-        auto close = seastar::defer([&conn, &input, &output, &serve] () noexcept {
+        future<> serve = conn.process();
+        auto close = defer([&conn, &input, &output, &serve] () noexcept {
             conn.close().get();
             input.close().get();
             output.close().get();
@@ -80,7 +81,7 @@ seastar::future<> test_websocket_handshake_common(std::string subprotocol) {
         input.consume(parser).get();
         std::unique_ptr<http::reply> resp = parser.get_parsed_response();
         SEASTAR_ASSERT(resp);
-        seastar::sstring websocket_accept = resp->_headers["Sec-WebSocket-Accept"];
+        sstring websocket_accept = resp->_headers["Sec-WebSocket-Accept"];
         // Trim possible whitespace prefix
         auto it = std::find_if(websocket_accept.begin(), websocket_accept.end(), ::isalnum);
         if (it != websocket_accept.end()) {
@@ -101,14 +102,14 @@ SEASTAR_TEST_CASE(test_websocket_handshake_no_subprotocol) {
     return test_websocket_handshake_common("");
 }
 
-seastar::future<> test_websocket_handler_registration_common(std::string subprotocol) {
+future<> test_websocket_handler_registration_common(std::string subprotocol) {
     return seastar::async([=] {
         loopback_connection_factory factory;
         loopback_socket_impl lsi(factory);
 
         auto acceptor = factory.get_server_socket().accept();
-        auto connector = lsi.connect(seastar::socket_address(), seastar::socket_address());
-        seastar::connected_socket sock = connector.get();
+        auto connector = lsi.connect(socket_address(), socket_address());
+        connected_socket sock = connector.get();
         auto input = sock.input();
         auto output = sock.output();
 
@@ -116,15 +117,15 @@ seastar::future<> test_websocket_handler_registration_common(std::string subprot
         websocket::server ws;
         ws.register_handler(subprotocol, [] (input_stream<char>& in,
                         output_stream<char>& out) {
-            return seastar::repeat([&in, &out]() {
+            return repeat([&in, &out]() {
                 return in.read().then([&out](temporary_buffer<char> f) {
                     std::cerr << "f.size(): " << f.size() << "\n";
                     if (f.empty()) {
-                        return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
+                        return make_ready_future<stop_iteration>(stop_iteration::yes);
                     } else {
                         return out.write(std::move(f)).then([&out]() {
                             return out.flush().then([] {
-                                return seastar::make_ready_future<stop_iteration>(stop_iteration::no);
+                                return make_ready_future<stop_iteration>(stop_iteration::no);
                             });
                         });
                     }
@@ -132,9 +133,9 @@ seastar::future<> test_websocket_handler_registration_common(std::string subprot
             });
         });
         websocket::server_connection conn(ws, acceptor.get().connection);
-        seastar::future<> serve = conn.process();
+        future<> serve = conn.process();
 
-        auto close = seastar::defer([&conn, &input, &output, &serve] () noexcept {
+        auto close = defer([&conn, &input, &output, &serve] () noexcept {
             conn.close().get();
             input.close().get();
             output.close().get();
@@ -189,11 +190,11 @@ public:
         auto buf = temporary_buffer<char>::copy_of(s);
         _bufs.emplace_back(std::move(buf));
     }
-    virtual seastar::future<temporary_buffer<char>> get() override {
+    virtual future<temporary_buffer<char>> get() override {
         if (_idx < _bufs.size()) {
-            return seastar::make_ready_future<temporary_buffer<char>>(_bufs[_idx++].share());
+            return make_ready_future<temporary_buffer<char>>(_bufs[_idx++].share());
         }
-        return seastar::make_ready_future<temporary_buffer<char>>(temporary_buffer<char>{});
+        return make_ready_future<temporary_buffer<char>>(temporary_buffer<char>{});
     }
 };
 
@@ -225,7 +226,7 @@ SEASTAR_TEST_CASE(test_websocket_parser_split) {
 
             input_stream<char> in{data_source{std::move(source)}};
 
-            std::vector<seastar::sstring> results;
+            std::vector<sstring> results;
 
             while (true) {
                 in.consume(parser).get();
@@ -240,7 +241,7 @@ SEASTAR_TEST_CASE(test_websocket_parser_split) {
             SEASTAR_ASSERT(!parser.is_valid());
             BOOST_REQUIRE_EQUAL(0, parser.result().size());
 
-            std::vector<seastar::sstring> expected = {
+            std::vector<sstring> expected = {
                 "TEST1",
                 "TEST2",
                 "TEST3",

@@ -27,14 +27,15 @@
 #include <seastar/util/closeable.hh>
 #include "../apps/lib/stop_signal.hh"
 
+using namespace seastar;
 using namespace net;
 using namespace std::chrono_literals;
 
 class udp_server {
 private:
     std::optional<udp_channel> _chan;
-    std::optional<seastar::future<>> _task;
-    seastar::timer<> _stats_timer;
+    std::optional<future<>> _task;
+    timer<> _stats_timer;
     uint64_t _n_sent {};
 public:
     void start(uint16_t port) {
@@ -56,7 +57,7 @@ public:
             });
         });
     }
-    seastar::future<> stop() {
+    future<> stop() {
         if (_chan) {
             _chan->shutdown_input();
             _chan->shutdown_output();
@@ -72,7 +73,7 @@ public:
 namespace bpo = boost::program_options;
 
 int main(int ac, char ** av) {
-    seastar::app_template app;
+    app_template app;
     app.add_options()
         ("port", bpo::value<uint16_t>()->default_value(10000), "UDP server port") ;
    return app.run(ac, av, [&] {
@@ -81,7 +82,7 @@ int main(int ac, char ** av) {
             auto&& config = app.configuration();
             uint16_t port = config["port"].as<uint16_t>();
             sharded<udp_server> server;
-            if (seastar::engine().net().has_per_core_namespace()) {
+            if (engine().net().has_per_core_namespace()) {
                 server.start().get();
             } else {
                 server.start_single().get();

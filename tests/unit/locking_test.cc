@@ -36,6 +36,7 @@
 #include <seastar/core/shared_mutex.hh>
 #include <seastar/util/alloc_failure_injector.hh>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 SEASTAR_THREAD_TEST_CASE(test_rwlock) {
@@ -59,13 +60,13 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock) {
 }
 
 SEASTAR_TEST_CASE(test_with_lock_mutable) {
-    return seastar::do_with(rwlock(), [](rwlock& l) {
+    return do_with(rwlock(), [](rwlock& l) {
         return with_lock(l.for_read(), [p = std::make_unique<int>(42)] () mutable {});
     });
 }
 
 SEASTAR_TEST_CASE(test_rwlock_exclusive) {
-    return seastar::do_with(rwlock(), unsigned(0), [] (rwlock& l, unsigned& counter) {
+    return do_with(rwlock(), unsigned(0), [] (rwlock& l, unsigned& counter) {
         return parallel_for_each(std::views::iota(0, 10), [&l, &counter] (int idx) {
             return with_lock(l.for_write(), [&counter] {
                 BOOST_REQUIRE_EQUAL(counter, 0u);
@@ -80,7 +81,7 @@ SEASTAR_TEST_CASE(test_rwlock_exclusive) {
 }
 
 SEASTAR_TEST_CASE(test_rwlock_shared) {
-    return seastar::do_with(rwlock(), unsigned(0), unsigned(0), [] (rwlock& l, unsigned& counter, unsigned& max) {
+    return do_with(rwlock(), unsigned(0), unsigned(0), [] (rwlock& l, unsigned& counter, unsigned& max) {
         return parallel_for_each(std::views::iota(0, 10), [&l, &counter, &max] (int idx) {
             return with_lock(l.for_read(), [&counter, &max] {
                 ++counter;
@@ -100,7 +101,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_failed_func) {
     rwlock l;
 
     // verify that the rwlock is unlocked when func fails
-    seastar::future<> fut = with_lock(l.for_read(), [] {
+    future<> fut = with_lock(l.for_read(), [] {
         throw std::runtime_error("injected");
     });
     BOOST_REQUIRE_THROW(fut.get(), std::runtime_error);
@@ -120,7 +121,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_abort) {
     l.write_lock().get();
 
     {
-        seastar::abort_source as;
+        abort_source as;
         auto f = l.write_lock(as);
         BOOST_REQUIRE(!f.available());
 
@@ -132,7 +133,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_abort) {
     }
 
     {
-        seastar::abort_source as;
+        abort_source as;
         auto f = l.read_lock(as);
         BOOST_REQUIRE(!f.available());
 
@@ -150,7 +151,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_hold_abort) {
     auto wh = l.hold_write_lock().get();
 
     {
-        seastar::abort_source as;
+        abort_source as;
         auto f = l.hold_write_lock(as);
         BOOST_REQUIRE(!f.available());
 
@@ -162,7 +163,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_hold_abort) {
     }
 
     {
-        seastar::abort_source as;
+        abort_source as;
         auto f = l.hold_read_lock(as);
         BOOST_REQUIRE(!f.available());
 
@@ -196,7 +197,7 @@ SEASTAR_THREAD_TEST_CASE(test_rwlock_hold) {
 
 SEASTAR_THREAD_TEST_CASE(test_failed_with_lock) {
     struct test_lock {
-        seastar::future<> lock() noexcept {
+        future<> lock() noexcept {
             return make_exception_future<>(std::runtime_error("injected"));
         }
         void unlock() noexcept {
@@ -234,7 +235,7 @@ SEASTAR_THREAD_TEST_CASE(test_shared_mutex) {
 }
 
 SEASTAR_TEST_CASE(test_shared_mutex_exclusive) {
-    return seastar::do_with(shared_mutex(), unsigned(0), [] (shared_mutex& sm, unsigned& counter) {
+    return do_with(shared_mutex(), unsigned(0), [] (shared_mutex& sm, unsigned& counter) {
         return parallel_for_each(std::views::iota(0, 10), [&sm, &counter] (int idx) {
             return with_lock(sm, [&counter] {
                 BOOST_REQUIRE_EQUAL(counter, 0u);
@@ -249,7 +250,7 @@ SEASTAR_TEST_CASE(test_shared_mutex_exclusive) {
 }
 
 SEASTAR_TEST_CASE(test_shared_mutex_shared) {
-    return seastar::do_with(shared_mutex(), unsigned(0), unsigned(0), [] (shared_mutex& sm, unsigned& counter, unsigned& max) {
+    return do_with(shared_mutex(), unsigned(0), unsigned(0), [] (shared_mutex& sm, unsigned& counter, unsigned& max) {
         return parallel_for_each(std::views::iota(0, 10), [&sm, &counter, &max] (int idx) {
             return with_shared(sm, [&counter, &max] {
                 ++counter;
@@ -269,7 +270,7 @@ SEASTAR_THREAD_TEST_CASE(test_shared_mutex_failed_func) {
     shared_mutex sm;
 
     // verify that the shared_mutex is unlocked when func fails
-    seastar::future<> fut = with_shared(sm, [] {
+    future<> fut = with_shared(sm, [] {
         throw std::runtime_error("injected");
     });
     BOOST_REQUIRE_THROW(fut.get(), std::runtime_error);
@@ -294,7 +295,7 @@ SEASTAR_THREAD_TEST_CASE(test_shared_mutex_throwing_func) {
     };
 
     // verify that the shared_mutex is unlocked when func move fails
-    seastar::future<> fut = with_shared(sm, [x = X(0)] {});
+    future<> fut = with_shared(sm, [x = X(0)] {});
     BOOST_REQUIRE_THROW(fut.get(), std::runtime_error);
 
     fut = with_lock(sm, [x = X(0)] {});
@@ -473,7 +474,7 @@ SEASTAR_TEST_CASE(test_shared_mutex_exclusive_locks) {
     shared_mutex sm{};
     unsigned counter = 0;
 
-    co_await coroutine::parallel_for_each(std::views::iota(0, 10), coroutine::lambda([&sm, &counter] (auto&&) -> seastar::future<> {
+    co_await coroutine::parallel_for_each(std::views::iota(0, 10), coroutine::lambda([&sm, &counter] (auto&&) -> future<> {
         const auto ulock = co_await get_unique_lock(sm);
         BOOST_REQUIRE_EQUAL(counter, 0u);
         ++counter;

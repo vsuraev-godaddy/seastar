@@ -25,6 +25,7 @@
 #include <seastar/net/api.hh>
 #include <iostream>
 
+using namespace seastar;
 using namespace net;
 using namespace std::chrono_literals;
 
@@ -34,7 +35,7 @@ private:
     uint64_t n_sent {};
     uint64_t n_received {};
     uint64_t n_failed {};
-    seastar::timer<> _stats_timer;
+    timer<> _stats_timer;
 public:
     void start(ipv4_addr server_addr) {
         std::cout << "Sending to " << server_addr << std::endl;
@@ -77,7 +78,7 @@ namespace bpo = boost::program_options;
 
 int main(int ac, char ** av) {
     client _client;
-    seastar::app_template app;
+    app_template app;
     app.add_options()
         ("server", bpo::value<std::string>(), "Server address")
         ;

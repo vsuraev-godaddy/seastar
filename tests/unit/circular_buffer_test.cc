@@ -35,6 +35,7 @@
 #include <seastar/core/circular_buffer.hh>
 #include <seastar/util/assert.hh>
 
+using namespace seastar;
 
 static_assert(std::ranges::range<circular_buffer<int>>);
 

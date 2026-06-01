@@ -31,6 +31,7 @@
 
 namespace bpo = boost::program_options;
 
+using namespace seastar;
 
 static bpo::variables_map parse(const bpo::options_description& desc, std::initializer_list<const char*> args) {
     std::vector<const char*> raw_args{"program_options_test"};

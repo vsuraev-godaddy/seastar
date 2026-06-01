@@ -28,6 +28,7 @@
 
 #include <seastar/testing/test_case.hh>
 
+using namespace seastar;
 
 SEASTAR_TEST_CASE(getgrnam_group_name_does_not_exist_test) {
     // A better approach would be to use a test setup and teardown to create a fake group

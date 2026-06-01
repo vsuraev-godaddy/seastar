@@ -28,10 +28,11 @@
 #include <fmt/printf.h>
 #include <string>
 
+using namespace seastar;
 using namespace std::chrono_literals;
 
 int main(int ac, char** av) {
-    seastar::app_template at;
+    app_template at;
     namespace bpo = boost::program_options;
     at.add_options()
             ("concurrency", bpo::value<unsigned>()->default_value(1), "Write operations to issue in parallel")
@@ -46,19 +47,19 @@ int main(int ac, char** av) {
         auto sloppy_size = at.configuration()["sloppy-size"].as<bool>();
         file_open_options foo;
         foo.sloppy_size = sloppy_size;
-        return seastar::open_file_dma(
-                "testfile.tmp", seastar::open_flags::wo | seastar::open_flags::create | seastar::open_flags::exclusive,
+        return open_file_dma(
+                "testfile.tmp", open_flags::wo | open_flags::create | open_flags::exclusive,
                 foo).then([=] (file f) {
             file_output_stream_options foso;
             foso.buffer_size = buffer_size;
             foso.preallocation_size = 32 << 20;
             foso.write_behind = concurrency;
             return make_file_output_stream(f, foso).then([=] (output_stream<char>&& os) {
-                return seastar::do_with(std::move(os), std::move(f), unsigned(0), [=] (output_stream<char>& os, file& f, unsigned& completed) {
+                return do_with(std::move(os), std::move(f), unsigned(0), [=] (output_stream<char>& os, file& f, unsigned& completed) {
                     auto start = std::chrono::steady_clock::now();
-                    return seastar::repeat([=, &os, &completed] {
+                    return repeat([=, &os, &completed] {
                         if (completed == total_ops) {
-                            return seastar::make_ready_future<stop_iteration>(stop_iteration::yes);
+                            return make_ready_future<stop_iteration>(stop_iteration::yes);
                         }
                         std::string buf(buffer_size, '\0');
                         return os.write(buf).then([&completed] {

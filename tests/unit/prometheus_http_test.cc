@@ -30,6 +30,7 @@
 
 #include <boost/test/tools/old/interface.hpp>
 
+using namespace seastar;
 using namespace httpd;
 using namespace std::literals;
 
@@ -50,7 +51,7 @@ struct test_metrics {
     }
 };
 
-seastar::future<> test_prometheus_metrics_body() {
+future<> test_prometheus_metrics_body() {
     test_metrics metrics;
     metrics.setup_metrics();
 
@@ -63,14 +64,14 @@ seastar::future<> test_prometheus_metrics_body() {
         prometheus::config ctx;
         add_prometheus_routes(server, ctx).get();
 
-        seastar::future<> client = seastar::async([&lsi] {
-            seastar::connected_socket c_socket = lsi.connect(seastar::socket_address(ipv4_addr()), seastar::socket_address(ipv4_addr())).get();
+        future<> client = seastar::async([&lsi] {
+            connected_socket c_socket = lsi.connect(socket_address(ipv4_addr()), socket_address(ipv4_addr())).get();
             input_stream<char> input(c_socket.input());
             auto close_input = deferred_close(input);
             output_stream<char> output(c_socket.output());
             auto close_output = deferred_close(output);
 
-            output.write(seastar::sstring("GET /metrics HTTP/1.1\r\nHost: test\r\n\r\n")).get();
+            output.write(sstring("GET /metrics HTTP/1.1\r\nHost: test\r\n\r\n")).get();
             output.flush().get();
             auto resp = input.read().get();
             auto resp_str = std::string(resp.get(), resp.size());

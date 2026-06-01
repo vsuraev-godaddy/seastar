@@ -60,11 +60,11 @@ with_ctxsw_counting(Counter& counter, Func&& func) {
     return func();
 }
 
-bool filesystem_has_good_aio_support(seastar::sstring directory, bool verbose) {
+bool filesystem_has_good_aio_support(sstring directory, bool verbose) {
     aio_context_t ioctx = {};
     auto r = io_setup(1, &ioctx);
     throw_system_error_on(r == -1, "io_setup");
-    auto cleanup = seastar::defer([&] () noexcept { io_destroy(ioctx); });
+    auto cleanup = defer([&] () noexcept { io_destroy(ioctx); });
     auto fname = directory + "/fsqual.tmp";
     auto fd = file_desc::open(fname, O_CREAT|O_EXCL|O_RDWR|O_DIRECT, 0600);
     unlink(fname.c_str());
@@ -73,7 +73,7 @@ bool filesystem_has_good_aio_support(seastar::sstring directory, bool verbose) {
     auto bufsize = 4096;
     auto ctxsw = 0;
     auto buf = aligned_alloc(4096, 4096);
-    auto del = seastar::defer([&] () noexcept { ::free(buf); });
+    auto del = defer([&] () noexcept { ::free(buf); });
     for (int i = 0; i < nr; ++i) {
         struct iocb cmd;
         cmd = make_write_iocb(fd.get(), bufsize*i, buf, bufsize);

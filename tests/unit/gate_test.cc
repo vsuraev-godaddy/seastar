@@ -31,29 +31,30 @@
 #include <seastar/testing/test_case.hh>
 #include <seastar/testing/thread_test_case.hh>
 
+using namespace seastar;
 
-static_assert(std::is_nothrow_default_constructible_v<seastar::gate>);
-static_assert(std::is_nothrow_move_constructible_v<seastar::gate>);
-static_assert(std::is_nothrow_move_assignable_v<seastar::gate>);
+static_assert(std::is_nothrow_default_constructible_v<gate>);
+static_assert(std::is_nothrow_move_constructible_v<gate>);
+static_assert(std::is_nothrow_move_assignable_v<gate>);
 
 static_assert(std::is_nothrow_default_constructible_v<named_gate>);
 static_assert(std::is_nothrow_move_constructible_v<named_gate>);
 static_assert(std::is_nothrow_move_assignable_v<named_gate>);
 
 template <typename Func>
-static seastar::future<> check_gate_closed_exception(Func func) {
+static future<> check_gate_closed_exception(Func func) {
     try {
         co_await futurize_invoke(func);
         BOOST_FAIL("func was expected to throw gate_closed_exception");
     } catch (const gate_closed_exception& e) {
-        BOOST_REQUIRE_EQUAL(e.what(), "seastar::gate closed");
+        BOOST_REQUIRE_EQUAL(e.what(), "gate closed");
     } catch (...) {
         BOOST_FAIL(format("unexpected exception: {}", std::current_exception()));
     }
 }
 
 SEASTAR_TEST_CASE(basic_gate_test) {
-    seastar::gate g;
+    gate g;
 
     BOOST_REQUIRE_EQUAL(g.get_count(), 0);
     BOOST_REQUIRE(!g.is_closed());
@@ -80,7 +81,7 @@ SEASTAR_TEST_CASE(basic_gate_test) {
 }
 
 SEASTAR_TEST_CASE(gate_closed_test) {
-    seastar::gate g;
+    gate g;
 
     BOOST_REQUIRE(!g.is_closed());
     BOOST_REQUIRE_NO_THROW(g.check());
@@ -102,24 +103,24 @@ SEASTAR_TEST_CASE(gate_closed_test) {
     co_await check_gate_closed_exception([&] { g.check(); });
     co_await check_gate_closed_exception([&] { g.enter(); });
     co_await check_gate_closed_exception([&] { g.hold(); });
-    co_await check_gate_closed_exception([&] () -> seastar::future<> { co_await seastar::with_gate(g, [] { return make_ready_future(); }); });
-    co_await check_gate_closed_exception([&] () -> seastar::future<> { co_await try_with_gate(g, [] { return make_ready_future(); }); });
+    co_await check_gate_closed_exception([&] () -> future<> { co_await with_gate(g, [] { return make_ready_future(); }); });
+    co_await check_gate_closed_exception([&] () -> future<> { co_await try_with_gate(g, [] { return make_ready_future(); }); });
 }
 
 template <typename Func>
-static seastar::future<> check_named_gate_closed_exception(Func func, seastar::sstring name) {
+static future<> check_named_gate_closed_exception(Func func, sstring name) {
     try {
         co_await futurize_invoke(func);
         BOOST_FAIL("func was expected to throw gate_closed_exception");
     } catch (const gate_closed_exception& e) {
-        BOOST_REQUIRE_EQUAL(e.what(), fmt::format("{} seastar::gate closed", name));
+        BOOST_REQUIRE_EQUAL(e.what(), fmt::format("{} gate closed", name));
     } catch (...) {
         BOOST_FAIL(format("unexpected exception: {}", std::current_exception()));
     }
 }
 
 SEASTAR_TEST_CASE(named_gate_closed_test) {
-    auto test_named_gate = [] (named_gate& g, const seastar::sstring name) -> seastar::future<> {
+    auto test_named_gate = [] (named_gate& g, const sstring name) -> future<> {
         if (!g.is_closed()) {
             BOOST_REQUIRE_NO_THROW(g.check());
             BOOST_REQUIRE_NO_THROW(g.enter());
@@ -141,15 +142,15 @@ SEASTAR_TEST_CASE(named_gate_closed_test) {
         co_await check_named_gate_closed_exception([&] { g.check(); }, name);
         co_await check_named_gate_closed_exception([&] { g.enter(); }, name);
         co_await check_named_gate_closed_exception([&] { g.hold(); }, name);
-        co_await check_named_gate_closed_exception([&] () -> seastar::future<> { co_await seastar::with_gate(g, [] { return make_ready_future(); }); }, name);
-        co_await check_named_gate_closed_exception([&] () -> seastar::future<> { co_await try_with_gate(g, [] { return make_ready_future(); }); }, name);
+        co_await check_named_gate_closed_exception([&] () -> future<> { co_await with_gate(g, [] { return make_ready_future(); }); }, name);
+        co_await check_named_gate_closed_exception([&] () -> future<> { co_await try_with_gate(g, [] { return make_ready_future(); }); }, name);
     };
 
     BOOST_TEST_MESSAGE("test_named_gate(default_constructed)");
     named_gate default_constructed;
     co_await test_named_gate(default_constructed, "named");
 
-    seastar::sstring foo = "foo";
+    sstring foo = "foo";
     BOOST_TEST_MESSAGE("test_named_gate(name_constructed)");
     named_gate name_constructed(foo);
     co_await test_named_gate(name_constructed, foo);
@@ -157,7 +158,7 @@ SEASTAR_TEST_CASE(named_gate_closed_test) {
     auto move_constructed = std::move(name_constructed);
     co_await test_named_gate(move_constructed, foo);
     BOOST_TEST_MESSAGE("test_named_gate(move_assigned)");
-    seastar::sstring bar = "bar";
+    sstring bar = "bar";
     named_gate move_assigned(foo);
     move_assigned = named_gate(bar);
     co_await test_named_gate(move_assigned, bar);

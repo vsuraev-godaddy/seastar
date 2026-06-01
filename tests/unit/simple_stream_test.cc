@@ -24,6 +24,7 @@
 #include <boost/test/unit_test.hpp>
 #include <seastar/core/simple-stream.hh>
 
+using namespace seastar;
 
 template<typename Input, typename Output>
 static void write_read_test(Input in, Output out)

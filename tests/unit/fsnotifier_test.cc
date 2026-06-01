@@ -32,9 +32,10 @@
 #include "tmpdir.hh"
 
 namespace fs = std::filesystem;
+using namespace seastar;
 using experimental::fsnotifier;
 
-static bool find_event(const std::vector<fsnotifier::event>& events, const fsnotifier::watch& w, fsnotifier::flags mask, std::optional<seastar::sstring> path = {}) {
+static bool find_event(const std::vector<fsnotifier::event>& events, const fsnotifier::watch& w, fsnotifier::flags mask, std::optional<sstring> path = {}) {
     auto i = std::find_if(events.begin(), events.end(), [&](const fsnotifier::event& e) {
         return (e.mask & mask) != fsnotifier::flags{}
             && e.id == w
@@ -49,7 +50,7 @@ SEASTAR_THREAD_TEST_CASE(test_notify_modify_close_delete) {
     fsnotifier fsn;
 
     auto p = tmp.path() / "kossa.dat";
-    auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
     auto w = fsn.create_watch(p.native(), fsnotifier::flags::delete_self
         | fsnotifier::flags::modify
         | fsnotifier::flags::close
@@ -86,8 +87,8 @@ SEASTAR_THREAD_TEST_CASE(test_notify_overwrite) {
 
     auto p = tmp.path() / "kossa.dat";
 
-    auto write_file = [](fs::path& p, seastar::sstring content) {
-        auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto write_file = [](fs::path& p, sstring content) {
+        auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
         auto os = make_file_output_stream(f).get();
         os.write(content).get();
         os.flush().get();
@@ -138,7 +139,7 @@ SEASTAR_THREAD_TEST_CASE(test_notify_create_delete_child) {
         | fsnotifier::flags::delete_child
     ).get();
 
-    auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
 
     {
         auto events = fsn.wait().get();
@@ -160,12 +161,12 @@ SEASTAR_THREAD_TEST_CASE(test_notify_open) {
     fsnotifier fsn;
 
     auto p = tmp.path() / "kossa.dat";
-    auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
     f.close().get();
 
     auto w = fsn.create_watch(p.native(), fsnotifier::flags::open).get();
 
-    auto f2 = seastar::open_file_dma(p.native(), seastar::open_flags::ro).get();
+    auto f2 = open_file_dma(p.native(), open_flags::ro).get();
 
     {
         auto events = fsn.wait().get();
@@ -180,7 +181,7 @@ SEASTAR_THREAD_TEST_CASE(test_notify_move) {
     fsnotifier fsn;
 
     auto p = tmp.path() / "kossa.dat";
-    auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
 
     f.close().get();
 
@@ -213,7 +214,7 @@ SEASTAR_THREAD_TEST_CASE(test_shutdown_notifier) {
     fsnotifier fsn;
 
     auto p = tmp.path() / "kossa.dat";
-    auto f = seastar::open_file_dma(p.native(), seastar::open_flags::create|seastar::open_flags::rw).get();
+    auto f = open_file_dma(p.native(), open_flags::create|open_flags::rw).get();
 
     f.close().get();
 
