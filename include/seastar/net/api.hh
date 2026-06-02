@@ -304,6 +304,10 @@ public:
     /// Gets O_REUSEADDR option
     /// \return whether the reuseaddr option is enabled or not
     bool get_reuseaddr() const;
+    /// Registers a callback invoked with the chosen local port after the OS
+    /// assigns it but before the first SYN is sent.  Only meaningful on the
+    /// native (DPDK) stack; a no-op on the POSIX stack.
+    void set_pre_connect_hook(std::function<void(uint16_t)> hook);
     /// Stops any in-flight connection attempt.
     ///
     /// Cancels the connection attempt if it's still in progress, and

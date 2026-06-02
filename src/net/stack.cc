@@ -189,6 +189,10 @@ future<connected_socket> socket::connect(socket_address sa, socket_address local
     return _si->connect(sa, local, proto);
 }
 
+void socket::set_pre_connect_hook(std::function<void(uint16_t)> hook) {
+    _si->set_pre_connect_hook(std::move(hook));
+}
+
 void socket::set_reuseaddr(bool reuseaddr) {
     _si->set_reuseaddr(reuseaddr);
 }

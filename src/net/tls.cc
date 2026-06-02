@@ -2055,6 +2055,9 @@ public:
             return wrap_client(cred, std::move(s), std::move(options));
         });
     }
+    void set_pre_connect_hook(std::function<void(uint16_t)> hook) override {
+        _socket.set_pre_connect_hook(std::move(hook));
+    }
     void set_reuseaddr(bool reuseaddr) override {
       _socket.set_reuseaddr(reuseaddr);
     }

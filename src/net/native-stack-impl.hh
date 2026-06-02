@@ -126,9 +126,14 @@ template <typename Protocol>
 class native_socket_impl final : public socket_impl {
     Protocol& _proto;
     lw_shared_ptr<typename Protocol::connection> _conn;
+    std::function<void(uint16_t)> _pre_connect_hook;
 public:
     explicit native_socket_impl(Protocol& proto)
         : _proto(proto), _conn(nullptr) { }
+
+    virtual void set_pre_connect_hook(std::function<void(uint16_t)> hook) override {
+        _pre_connect_hook = std::move(hook);
+    }
 
     virtual future<connected_socket> connect(socket_address sa, socket_address local, transport proto = transport::TCP) override {
         //TODO: implement SCTP
@@ -137,7 +142,7 @@ public:
         // FIXME: local is ignored since native stack does not support multiple IPs yet
         SEASTAR_ASSERT(sa.as_posix_sockaddr().sa_family == AF_INET);
 
-        _conn = make_lw_shared<typename Protocol::connection>(_proto.connect(sa));
+        _conn = make_lw_shared<typename Protocol::connection>(_proto.connect(sa, std::move(_pre_connect_hook)));
         return _conn->connected().then([conn = _conn]() mutable {
             auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn));
             return make_ready_future<connected_socket>(connected_socket(std::move(csi)));

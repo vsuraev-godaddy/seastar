@@ -58,6 +58,7 @@ public:
     socket_impl(socket_impl&&) = default;
     virtual ~socket_impl() {}
     virtual future<connected_socket> connect(socket_address sa, socket_address local, transport proto = transport::TCP) = 0;
+    virtual void set_pre_connect_hook(std::function<void(uint16_t)>) {}
     virtual void set_reuseaddr(bool reuseaddr) = 0;
     virtual bool get_reuseaddr() const = 0;
     virtual void shutdown() = 0;
