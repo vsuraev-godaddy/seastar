@@ -57,16 +57,34 @@ class native_network_stack;
 template <typename Protocol>
 class native_server_socket_impl : public server_socket_impl {
     typename Protocol::listener _listener;
+    std::function<void(uint16_t, bool)> _port_lifecycle_hook;
 public:
     native_server_socket_impl(Protocol& proto, uint16_t port, listen_options opt);
+    ~native_server_socket_impl();
     virtual future<accept_result> accept() override;
     virtual void abort_accept() override;
     virtual socket_address local_address() const override;
+    virtual void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) override;
 };
 
 template <typename Protocol>
 native_server_socket_impl<Protocol>::native_server_socket_impl(Protocol& proto, uint16_t port, listen_options opt)
     : _listener(proto.listen(port)) {
+}
+
+template <typename Protocol>
+native_server_socket_impl<Protocol>::~native_server_socket_impl() {
+    if (_port_lifecycle_hook) {
+        _port_lifecycle_hook(_listener.port(), false);
+    }
+}
+
+template <typename Protocol>
+void native_server_socket_impl<Protocol>::set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) {
+    _port_lifecycle_hook = std::move(hook);
+    if (_port_lifecycle_hook) {
+        _port_lifecycle_hook(_listener.port(), true);
+    }
 }
 
 template <typename Protocol>
@@ -87,6 +105,10 @@ native_server_socket_impl<Protocol>::accept() {
 template <typename Protocol>
 void
 native_server_socket_impl<Protocol>::abort_accept() {
+    if (_port_lifecycle_hook) {
+        _port_lifecycle_hook(_listener.port(), false);
+        _port_lifecycle_hook = {};
+    }
     _listener.abort_accept();
 }
 
@@ -99,11 +121,18 @@ socket_address native_server_socket_impl<Protocol>::local_address() const {
 template <typename Protocol>
 class native_connected_socket_impl : public connected_socket_impl {
     lw_shared_ptr<typename Protocol::connection> _conn;
+    std::function<void(uint16_t, bool)> _port_lifecycle_hook;
     class native_data_source_impl;
     class native_data_sink_impl;
 public:
-    explicit native_connected_socket_impl(lw_shared_ptr<typename Protocol::connection> conn)
-        : _conn(std::move(conn)) {}
+    explicit native_connected_socket_impl(lw_shared_ptr<typename Protocol::connection> conn,
+                                          std::function<void(uint16_t, bool)> hook = {})
+        : _conn(std::move(conn)), _port_lifecycle_hook(std::move(hook)) {}
+    ~native_connected_socket_impl() {
+        if (_port_lifecycle_hook) {
+            _port_lifecycle_hook(_conn->local_port(), false);
+        }
+    }
     using connected_socket_impl::source;
     virtual data_source source() override;
     virtual data_sink sink() override;
@@ -126,13 +155,13 @@ template <typename Protocol>
 class native_socket_impl final : public socket_impl {
     Protocol& _proto;
     lw_shared_ptr<typename Protocol::connection> _conn;
-    std::function<void(uint16_t)> _pre_connect_hook;
+    std::function<void(uint16_t, bool)> _port_lifecycle_hook;
 public:
     explicit native_socket_impl(Protocol& proto)
         : _proto(proto), _conn(nullptr) { }
 
-    virtual void set_pre_connect_hook(std::function<void(uint16_t)> hook) override {
-        _pre_connect_hook = std::move(hook);
+    virtual void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) override {
+        _port_lifecycle_hook = std::move(hook);
     }
 
     virtual future<connected_socket> connect(socket_address sa, socket_address local, transport proto = transport::TCP) override {
@@ -142,9 +171,14 @@ public:
         // FIXME: local is ignored since native stack does not support multiple IPs yet
         SEASTAR_ASSERT(sa.as_posix_sockaddr().sa_family == AF_INET);
 
-        _conn = make_lw_shared<typename Protocol::connection>(_proto.connect(sa, std::move(_pre_connect_hook)));
-        return _conn->connected().then([conn = _conn]() mutable {
-            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn));
+        auto hook = std::move(_port_lifecycle_hook);
+        // Pass acquire-only wrapper to tcp::connect (fires before SYN).
+        // Copy hook by value so the full hook can still be moved into the connected socket below.
+        _conn = make_lw_shared<typename Protocol::connection>(
+            _proto.connect(sa, hook ? std::function<void(uint16_t)>([h = hook](uint16_t p) { h(p, true); })
+                                    : std::function<void(uint16_t)>{}));
+        return _conn->connected().then([conn = _conn, hook = std::move(hook)]() mutable {
+            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn), std::move(hook));
             return make_ready_future<connected_socket>(connected_socket(std::move(csi)));
         });
     }

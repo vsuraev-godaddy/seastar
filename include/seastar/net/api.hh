@@ -304,10 +304,11 @@ public:
     /// Gets O_REUSEADDR option
     /// \return whether the reuseaddr option is enabled or not
     bool get_reuseaddr() const;
-    /// Registers a callback invoked with the chosen local port after the OS
-    /// assigns it but before the first SYN is sent.  Only meaningful on the
-    /// native (DPDK) stack; a no-op on the POSIX stack.
-    void set_pre_connect_hook(std::function<void(uint16_t)> hook);
+    /// Registers a port lifecycle callback.  Called with \c (port, true)
+    /// after the local port is chosen but before the first SYN, and with
+    /// \c (port, false) when the connected socket is destroyed.  Only
+    /// meaningful on the native (DPDK) stack; a no-op on the POSIX stack.
+    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook);
     /// Stops any in-flight connection attempt.
     ///
     /// Cancels the connection attempt if it's still in progress, and
@@ -369,6 +370,12 @@ public:
     /// Current and future \ref accept() calls will terminate immediately
     /// with an error.
     void abort_accept();
+
+    /// Registers a port lifecycle callback.  Called with \c (port, true)
+    /// immediately when the hook is installed on an already-bound socket,
+    /// and with \c (port, false) when the listener is closed.  Only
+    /// meaningful on the native (DPDK) stack; a no-op on the POSIX stack.
+    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook);
 
     /// Local bound address
     ///

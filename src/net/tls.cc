@@ -2036,6 +2036,9 @@ public:
     socket_address local_address() const override {
         return _sock.local_address();
     }
+    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) override {
+        _sock.set_port_lifecycle_hook(std::move(hook));
+    }
 private:
 
     shared_ptr<server_credentials> _creds;
@@ -2055,8 +2058,8 @@ public:
             return wrap_client(cred, std::move(s), std::move(options));
         });
     }
-    void set_pre_connect_hook(std::function<void(uint16_t)> hook) override {
-        _socket.set_pre_connect_hook(std::move(hook));
+    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) override {
+        _socket.set_port_lifecycle_hook(std::move(hook));
     }
     void set_reuseaddr(bool reuseaddr) override {
       _socket.set_reuseaddr(reuseaddr);

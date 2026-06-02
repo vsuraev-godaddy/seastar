@@ -189,8 +189,8 @@ future<connected_socket> socket::connect(socket_address sa, socket_address local
     return _si->connect(sa, local, proto);
 }
 
-void socket::set_pre_connect_hook(std::function<void(uint16_t)> hook) {
-    _si->set_pre_connect_hook(std::move(hook));
+void socket::set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) {
+    _si->set_port_lifecycle_hook(std::move(hook));
 }
 
 void socket::set_reuseaddr(bool reuseaddr) {
@@ -213,6 +213,10 @@ server_socket::server_socket(std::unique_ptr<net::server_socket_impl> ssi) noexc
 }
 server_socket::server_socket(server_socket&& ss) noexcept = default;
 server_socket& server_socket::operator=(server_socket&& cs) noexcept = default;
+
+void server_socket::set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook) {
+    _ssi->set_port_lifecycle_hook(std::move(hook));
+}
 
 server_socket::~server_socket() {
 }
