@@ -90,14 +90,18 @@ void native_server_socket_impl<Protocol>::set_port_lifecycle_hook(std::function<
 template <typename Protocol>
 future<accept_result>
 native_server_socket_impl<Protocol>::accept() {
-    return _listener.accept().then([] (typename Protocol::connection conn) {
+    return _listener.accept().then([this] (typename Protocol::connection conn) {
         // Save "conn" contents before call below function
         // "conn" is moved in 1st argument, and used in 2nd argument
         // It causes trouble on Arm which passes arguments from left to right
         auto ip = conn.foreign_ip().ip;
         auto port = conn.foreign_port();
+	if (_port_lifecycle_hook) {
+        	_port_lifecycle_hook(port, true);
+	}
+	auto si = std::make_unique<native_connected_socket_impl<Protocol>>(make_lw_shared(std::move(conn)), _port_lifecycle_hook);
         return make_ready_future<accept_result>(accept_result{
-                connected_socket(std::make_unique<native_connected_socket_impl<Protocol>>(make_lw_shared(std::move(conn)))),
+                connected_socket(move(si)),
                 make_ipv4_address(ip, port)});
     });
 }
