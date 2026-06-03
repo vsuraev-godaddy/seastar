@@ -237,6 +237,12 @@ public:
 };
 
 network_stack_entry register_posix_stack();
+
+/// Returns a socket backed by the POSIX network stack regardless of the
+/// stack configured for the reactor.  Use for AF_UNIX connections when
+/// running with the native (DPDK/AF_XDP) stack.
+::seastar::socket make_posix_socket();
+
 }
 
 }

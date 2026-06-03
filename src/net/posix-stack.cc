@@ -724,6 +724,10 @@ posix_network_stack::listen(socket_address sa, listen_options opt) {
     return ::seastar::socket(std::make_unique<posix_socket_impl>(_allocator));
 }
 
+::seastar::socket make_posix_socket() {
+    return ::seastar::socket(std::make_unique<posix_socket_impl>());
+}
+
 posix_ap_network_stack::posix_ap_network_stack(const program_options::option_group& opts, std::pmr::polymorphic_allocator<char>* allocator)
         : posix_network_stack(opts, allocator), _reuseport(engine().posix_reuseport_available()) {
 }
