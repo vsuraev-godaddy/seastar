@@ -99,7 +99,7 @@ native_server_socket_impl<Protocol>::accept() {
         auto ip = conn.foreign_ip().ip;
         auto port = conn.foreign_port();
 	if (_port_lifecycle_hook) {
-        	_port_lifecycle_hook(port, true);
+        	_port_lifecycle_hook(ip, port, true);
 	}
 	auto si = std::make_unique<native_connected_socket_impl<Protocol>>(make_lw_shared(std::move(conn)), _port_lifecycle_hook);
         return make_ready_future<accept_result>(accept_result{
