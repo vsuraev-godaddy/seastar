@@ -591,10 +591,12 @@ private:
         void do_established() {
             _state = ESTABLISHED;
             update_rto(_snd.syn_tx_time);
+            _tcp._connections_established++;
             _connect_done.set_value();
         }
         void do_reset() {
             _state = CLOSED;
+            _tcp._connections_dropped++;
             cleanup();
             if (_rcv._data_received_promise) {
                 _rcv._data_received_promise->set_exception(tcp_reset_error());
@@ -665,6 +667,21 @@ private:
     circular_buffer<ipv4_traits::l4packet> _packetq;
     semaphore _queue_space = {212992};
     metrics::metric_groups _metrics;
+    uint64_t _syn_retransmits = 0;
+    uint64_t _data_retransmits = 0;
+    uint64_t _connections_established = 0;
+    uint64_t _connections_dropped = 0;
+public:
+    struct counters {
+        uint64_t syn_retransmits;
+        uint64_t data_retransmits;
+        uint64_t connections_established;
+        uint64_t connections_dropped;
+    };
+    counters get_counters() const noexcept {
+        return {_syn_retransmits, _data_retransmits, _connections_established, _connections_dropped};
+    }
+private:
 public:
     const inet_type& inet() const {
         return _inet;
@@ -786,7 +803,15 @@ tcp<InetTraits>::tcp(inet_type& inet)
     _metrics.add_group("tcp", {
         sm::make_counter("linearizations", [] { return tcp_packet_merger::linearizations(); },
                         sm::description("Counts a number of times a buffer linearization was invoked during the buffers merge process. "
-                                        "Divide it by a total TCP receive packet rate to get an everage number of lineraizations per TCP packet."))
+                                        "Divide it by a total TCP receive packet rate to get an everage number of lineraizations per TCP packet.")),
+        sm::make_counter("syn_retransmits", _syn_retransmits,
+                        sm::description("Number of SYN retransmissions (indicates missed SYN-ACK, likely XDP redirect failure or fill-ring drop).")),
+        sm::make_counter("data_retransmits", _data_retransmits,
+                        sm::description("Number of data segment retransmissions.")),
+        sm::make_counter("connections_established", _connections_established,
+                        sm::description("Number of TCP connections successfully established.")),
+        sm::make_counter("connections_dropped", _connections_dropped,
+                        sm::description("Number of TCP connections dropped (RST received or timeout)."))
     });
 
     _inet.register_packet_provider([this, tcb_polled = 0u] () mutable {
@@ -1969,6 +1994,7 @@ void tcp<InetTraits>::tcb::retransmit() {
     // Retransmit SYN
     if (syn_needs_on()) {
         if (_snd.syn_retransmit++ < _max_nr_retransmit) {
+            _tcp._syn_retransmits++;
             output_update_rto();
         } else {
             _connect_done.set_exception(tcp_connect_error());
@@ -1991,6 +2017,7 @@ void tcp<InetTraits>::tcb::retransmit() {
     if (_snd.data.empty()) {
         return;
     }
+    _tcp._data_retransmits++;
 
     // If there are unacked data, retransmit the earliest segment
     auto& unacked_seg = _snd.data.front();

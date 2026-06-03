@@ -207,6 +207,11 @@ public:
         internal::native_stack_net_stats::bytes_sent[scheduling_group_id] = 0;
         internal::native_stack_net_stats::bytes_received[scheduling_group_id] = 0;
     }
+
+    virtual tcp_counters get_tcp_counters() const noexcept override {
+        auto c = const_cast<native_network_stack*>(this)->_inet.get_tcp().get_counters();
+        return {c.syn_retransmits, c.data_retransmits, c.connections_established, c.connections_dropped};
+    }
 };
 
 thread_local promise<std::unique_ptr<network_stack>> native_network_stack::ready_promise;

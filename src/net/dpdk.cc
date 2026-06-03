@@ -1729,6 +1729,7 @@ void dpdk_device::init_port_fini()
             _xstats.get_value(dpdk_xstats::xstat_id::rx_undersize_errors) +
             _xstats.get_value(dpdk_xstats::xstat_id::rx_oversize_errors);
         _stats.rx.bad.total       = rte_stats.ierrors;
+        _stats.rx.bad.total      += rte_stats.imissed; /* AF_XDP fill-ring drops */
 
         _stats.tx.good.pause_xon  =
             _xstats.get_value(dpdk_xstats::xstat_id::tx_xon_packets);

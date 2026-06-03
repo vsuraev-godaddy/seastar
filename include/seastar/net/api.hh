@@ -497,6 +497,14 @@ public:
     // Clears the stats for this stack and scheduling group
     virtual void clear_stats(unsigned scheduling_group_id) = 0;
 
+    struct tcp_counters {
+        uint64_t syn_retransmits = 0;
+        uint64_t data_retransmits = 0;
+        uint64_t connections_established = 0;
+        uint64_t connections_dropped = 0;
+    };
+    virtual tcp_counters get_tcp_counters() const noexcept { return {}; }
+
     /**
      * Returns available network interfaces. This represents a
      * snapshot of interfaces available at call time, hence the
