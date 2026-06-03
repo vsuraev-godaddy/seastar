@@ -308,7 +308,7 @@ public:
     /// after the local port is chosen but before the first SYN, and with
     /// \c (port, false) when the connected socket is destroyed.  Only
     /// meaningful on the native (DPDK) stack; a no-op on the POSIX stack.
-    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook);
+    void set_port_lifecycle_hook(std::function<void(uint32_t, uint16_t, bool)> hook);
     /// Stops any in-flight connection attempt.
     ///
     /// Cancels the connection attempt if it's still in progress, and
@@ -375,7 +375,7 @@ public:
     /// immediately when the hook is installed on an already-bound socket,
     /// and with \c (port, false) when the listener is closed.  Only
     /// meaningful on the native (DPDK) stack; a no-op on the POSIX stack.
-    void set_port_lifecycle_hook(std::function<void(uint16_t, bool)> hook);
+    void set_port_lifecycle_hook(std::function<void(uint32_t, uint16_t, bool)> hook);
 
     /// Local bound address
     ///

@@ -761,7 +761,7 @@ public:
     void received(packet p, ipaddr from, ipaddr to);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off);
     listener listen(uint16_t port, size_t queue_length = 100);
-    connection connect(socket_address sa, std::function<void(uint16_t)> port_acquired_hook = {});
+    connection connect(socket_address sa, std::function<void(uint32_t, uint16_t)> port_acquired_hook = {});
     const net::hw_features& hw_features() const { return _inet._inet.hw_features(); }
     future<> poll_tcb(ipaddr to, lw_shared_ptr<tcb> tcb);
     void add_connected_tcb(lw_shared_ptr<tcb> tcbp, uint16_t local_port) {
@@ -827,7 +827,7 @@ auto tcp<InetTraits>::listen(uint16_t port, size_t queue_length) -> listener {
 }
 
 template <typename InetTraits>
-auto tcp<InetTraits>::connect(socket_address sa, std::function<void(uint16_t)> port_acquired_hook) -> connection {
+auto tcp<InetTraits>::connect(socket_address sa, std::function<void(uint32_t, uint16_t)> port_acquired_hook) -> connection {
     connid id;
     auto src_ip = _inet._inet.host_address();
     auto dst_ip = ipv4_address(sa);
@@ -845,7 +845,7 @@ auto tcp<InetTraits>::connect(socket_address sa, std::function<void(uint16_t)> p
     auto tcbp = make_lw_shared<tcb>(*this, id);
     _tcbs.insert({id, tcbp});
     if (port_acquired_hook) {
-        port_acquired_hook(id.local_port);
+        port_acquired_hook(src_ip.ip, id.local_port);
     }
     tcbp->connect();
     return connection(tcbp);
