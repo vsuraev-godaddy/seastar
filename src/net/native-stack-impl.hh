@@ -82,7 +82,7 @@ native_server_socket_impl<Protocol>::~native_server_socket_impl() {
 
 template <typename Protocol>
 void native_server_socket_impl<Protocol>::set_port_lifecycle_hook(std::function<void(uint32_t, uint16_t, bool)> hook) {
-    _port_lifecycle_hook = std::move(hook);
+    _port_lifecycle_hook = hook;
     if (_port_lifecycle_hook) {
         auto la = local_address();
         _port_lifecycle_hook(la.u.in.sin_addr.s_addr, _listener.port(), true);
@@ -134,7 +134,7 @@ class native_connected_socket_impl : public connected_socket_impl {
 public:
     explicit native_connected_socket_impl(lw_shared_ptr<typename Protocol::connection> conn,
                                           std::function<void(uint32_t, uint16_t, bool)> hook = {})
-        : _conn(std::move(conn)), _port_lifecycle_hook(std::move(hook)) {}
+        : _conn(std::move(conn)), _port_lifecycle_hook(hook) {}
     ~native_connected_socket_impl() {
         if (_port_lifecycle_hook) {
             _port_lifecycle_hook(_conn->local_ip().ip, _conn->local_port(), false);
@@ -168,7 +168,7 @@ public:
         : _proto(proto), _conn(nullptr) { }
 
     virtual void set_port_lifecycle_hook(std::function<void(uint32_t, uint16_t, bool)> hook) override {
-        _port_lifecycle_hook = std::move(hook);
+        _port_lifecycle_hook = hook;
     }
 
     virtual future<connected_socket> connect(socket_address sa, socket_address local, transport proto = transport::TCP) override {
@@ -185,7 +185,7 @@ public:
             _proto.connect(sa, hook ? std::function<void(uint32_t, uint16_t)>([h = hook](uint32_t ip, uint16_t p) { h(ip, p, true); })
                                     : std::function<void(uint32_t, uint16_t)>{}));
         return _conn->connected().then([conn = _conn, hook = std::move(hook)]() mutable {
-            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn), std::move(hook));
+            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn), hook);
             return make_ready_future<connected_socket>(connected_socket(std::move(csi)));
         });
     }
