@@ -101,7 +101,7 @@ native_server_socket_impl<Protocol>::accept() {
 	if (_port_lifecycle_hook) {
         	_port_lifecycle_hook(ip, port, true);
 	}
-	auto si = std::make_unique<native_connected_socket_impl<Protocol>>(make_lw_shared(std::move(conn)), _port_lifecycle_hook);
+	auto si = std::make_unique<native_connected_socket_impl<Protocol>>(make_lw_shared(std::move(conn)), _port_lifecycle_hook, ip, port);
         return make_ready_future<accept_result>(accept_result{
                 connected_socket(move(si)),
                 make_ipv4_address(ip, port)});
@@ -129,15 +129,19 @@ template <typename Protocol>
 class native_connected_socket_impl : public connected_socket_impl {
     lw_shared_ptr<typename Protocol::connection> _conn;
     std::function<void(uint32_t, uint16_t, bool)> _port_lifecycle_hook;
+    uint32_t _hook_ip = 0;
+    uint16_t _hook_port = 0;
     class native_data_source_impl;
     class native_data_sink_impl;
 public:
     explicit native_connected_socket_impl(lw_shared_ptr<typename Protocol::connection> conn,
-                                          std::function<void(uint32_t, uint16_t, bool)> hook = {})
-        : _conn(std::move(conn)), _port_lifecycle_hook(hook) {}
+                                          std::function<void(uint32_t, uint16_t, bool)> hook = {},
+                                          uint32_t hook_ip = 0, uint16_t hook_port = 0)
+        : _conn(std::move(conn)), _port_lifecycle_hook(hook),
+          _hook_ip(hook_ip), _hook_port(hook_port) {}
     ~native_connected_socket_impl() {
-        if (_port_lifecycle_hook) {
-            _port_lifecycle_hook(_conn->local_ip().ip, _conn->local_port(), false);
+        if (_port_lifecycle_hook && _hook_port != 0) {
+            _port_lifecycle_hook(_hook_ip, _hook_port, false);
         }
     }
     using connected_socket_impl::source;
@@ -179,13 +183,19 @@ public:
         SEASTAR_ASSERT(sa.as_posix_sockaddr().sa_family == AF_INET);
 
         auto hook = std::move(_port_lifecycle_hook);
-        // Pass acquire-only wrapper to tcp::connect (fires before SYN, with ip+port).
-        // Copy hook by value so the full hook can still be moved into the connected socket below.
+        // Capture the (ip, port) registered via port_acquired_hook so the destructor
+        // unregisters exactly what was registered (local ip + ephemeral port).
+        auto registered = std::make_shared<std::pair<uint32_t, uint16_t>>(0, 0);
         _conn = make_lw_shared<typename Protocol::connection>(
-            _proto.connect(sa, hook ? std::function<void(uint32_t, uint16_t)>([h = hook](uint32_t ip, uint16_t p) { h(ip, p, true); })
+            _proto.connect(sa, hook ? std::function<void(uint32_t, uint16_t)>(
+                                          [h = hook, registered](uint32_t ip, uint16_t p) {
+                                              *registered = {ip, p};
+                                              h(ip, p, true);
+                                          })
                                     : std::function<void(uint32_t, uint16_t)>{}));
-        return _conn->connected().then([conn = _conn, hook = std::move(hook)]() mutable {
-            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn), hook);
+        return _conn->connected().then([conn = _conn, hook = std::move(hook), registered]() mutable {
+            auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(
+                std::move(conn), hook, registered->first, registered->second);
             return make_ready_future<connected_socket>(connected_socket(std::move(csi)));
         });
     }
