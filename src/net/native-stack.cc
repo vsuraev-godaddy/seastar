@@ -50,6 +50,9 @@ module seastar;
 #include <seastar/net/udp.hh>
 #include <seastar/net/virtio.hh>
 #include <seastar/net/dpdk.hh>
+#ifdef SEASTAR_HAVE_DPDK
+#include <rte_ethdev.h>
+#endif
 #include <seastar/net/proxy.hh>
 #include <seastar/net/dhcp.hh>
 #include <seastar/net/config.hh>
@@ -212,6 +215,14 @@ public:
         auto c = const_cast<native_network_stack*>(this)->_inet.get_tcp().get_counters();
         return {c.syn_retransmits, c.data_retransmits, c.connections_established, c.connections_dropped};
     }
+
+#ifdef SEASTAR_HAVE_DPDK
+    virtual dpdk_port_stats get_dpdk_port_stats() const noexcept override {
+        rte_eth_stats s = {};
+        rte_eth_stats_get(0, &s);
+        return {s.ipackets, s.opackets, s.ibytes, s.obytes, s.imissed, s.ierrors, s.oerrors, s.rx_nombuf};
+    }
+#endif
 };
 
 thread_local promise<std::unique_ptr<network_stack>> native_network_stack::ready_promise;
