@@ -76,7 +76,7 @@ template <typename Protocol>
 native_server_socket_impl<Protocol>::~native_server_socket_impl() {
     if (_port_lifecycle_hook) {
         auto la = local_address();
-        _port_lifecycle_hook(la.u.in.sin_addr.s_addr, _listener.port(), false);
+        _port_lifecycle_hook(ntohl(la.u.in.sin_addr.s_addr), _listener.port(), false);
     }
 }
 
@@ -85,7 +85,7 @@ void native_server_socket_impl<Protocol>::set_port_lifecycle_hook(std::function<
     _port_lifecycle_hook = hook;
     if (_port_lifecycle_hook) {
         auto la = local_address();
-        _port_lifecycle_hook(la.u.in.sin_addr.s_addr, _listener.port(), true);
+        _port_lifecycle_hook(ntohl(la.u.in.sin_addr.s_addr), _listener.port(), true);
     }
 }
 
@@ -113,7 +113,7 @@ void
 native_server_socket_impl<Protocol>::abort_accept() {
     if (_port_lifecycle_hook) {
         auto la = local_address();
-        _port_lifecycle_hook(la.u.in.sin_addr.s_addr, _listener.port(), false);
+        _port_lifecycle_hook(ntohl(la.u.in.sin_addr.s_addr), _listener.port(), false);
         _port_lifecycle_hook = {};
     }
     _listener.abort_accept();
