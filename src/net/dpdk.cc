@@ -130,10 +130,13 @@ namespace dpdk {
 static constexpr uint16_t default_ring_size      = 512;
 
 //
-// We need 2 times the ring size of buffers because of the way PMDs
-// refill the ring.
+// For standard PMDs: 2× ring_size is enough because the PMD refills in
+// ring_size-sized batches.  For the AF_XDP PMD the fill ring must be
+// pre-populated with ETH_AF_XDP_DFLT_NUM_DESCS (2048) frames at startup,
+// and the XSK RX ring (ring_size) plus in-flight processing need additional
+// headroom.  8× gives: 2048 fill-ring + 512 XSK-RX + 1536 in-flight = 4096.
 //
-static constexpr uint16_t mbufs_per_queue_rx     = 2 * default_ring_size;
+static constexpr uint16_t mbufs_per_queue_rx     = 8 * default_ring_size;
 static constexpr uint16_t rx_gc_thresh           = 64;
 
 //
