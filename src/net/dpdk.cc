@@ -1366,6 +1366,7 @@ private:
     bool init_rx_mbuf_pool();
     bool map_dma();
     bool rx_gc();
+    void rx_gc_force();
     bool refill_one_cluster(rte_mbuf* head);
 
     /**
@@ -2112,38 +2113,44 @@ inline bool dpdk_qp<HugetlbfsMemBackend>::refill_one_cluster(rte_mbuf* head)
 }
 
 template <bool HugetlbfsMemBackend>
+void dpdk_qp<HugetlbfsMemBackend>::rx_gc_force()
+{
+    while (!_rx_free_pkts.empty()) {
+        //
+        // Use back() + pop_back() semantics to avoid an extra
+        // _rx_free_pkts.clear() at the end of the function - clear() has a
+        // linear complexity.
+        //
+        auto m = _rx_free_pkts.back();
+        _rx_free_pkts.pop_back();
+
+        if (!refill_one_cluster(m)) {
+            break;
+        }
+    }
+
+    if (_rx_free_bufs.size()) {
+        rte_mempool_put_bulk(_pktmbuf_pool_rx,
+                             (void **)_rx_free_bufs.data(),
+                             _rx_free_bufs.size());
+
+        // TODO: SEASTAR_ASSERT() in a fast path! Remove me ASAP!
+        SEASTAR_ASSERT(_num_rx_free_segs >= _rx_free_bufs.size());
+
+        _num_rx_free_segs -= _rx_free_bufs.size();
+        _rx_free_bufs.clear();
+
+        // TODO: SEASTAR_ASSERT() in a fast path! Remove me ASAP!
+        SEASTAR_ASSERT((_rx_free_pkts.empty() && !_num_rx_free_segs) ||
+               (!_rx_free_pkts.empty() && _num_rx_free_segs));
+    }
+}
+
+template <bool HugetlbfsMemBackend>
 bool dpdk_qp<HugetlbfsMemBackend>::rx_gc()
 {
     if (_num_rx_free_segs >= rx_gc_thresh) {
-        while (!_rx_free_pkts.empty()) {
-            //
-            // Use back() + pop_back() semantics to avoid an extra
-            // _rx_free_pkts.clear() at the end of the function - clear() has a
-            // linear complexity.
-            //
-            auto m = _rx_free_pkts.back();
-            _rx_free_pkts.pop_back();
-
-            if (!refill_one_cluster(m)) {
-                break;
-            }
-        }
-
-        if (_rx_free_bufs.size()) {
-            rte_mempool_put_bulk(_pktmbuf_pool_rx,
-                                 (void **)_rx_free_bufs.data(),
-                                 _rx_free_bufs.size());
-
-            // TODO: SEASTAR_ASSERT() in a fast path! Remove me ASAP!
-            SEASTAR_ASSERT(_num_rx_free_segs >= _rx_free_bufs.size());
-
-            _num_rx_free_segs -= _rx_free_bufs.size();
-            _rx_free_bufs.clear();
-
-            // TODO: SEASTAR_ASSERT() in a fast path! Remove me ASAP!
-            SEASTAR_ASSERT((_rx_free_pkts.empty() && !_num_rx_free_segs) ||
-                   (!_rx_free_pkts.empty() && _num_rx_free_segs));
-        }
+        rx_gc_force();
     }
 
     return _num_rx_free_segs >= rx_gc_thresh;
@@ -2218,6 +2225,9 @@ bool dpdk_qp<HugetlbfsMemBackend>::poll_rx_once()
     /* Now process the NIC packets read */
     if (likely(rx_count > 0)) {
         process_packets(buf, rx_count);
+        // For AF_XDP the fill ring must be replenished immediately after every
+        // burst; waiting for rx_gc_thresh under heavy TX starves new connections.
+        rx_gc_force();
     }
 
     return rx_count;
