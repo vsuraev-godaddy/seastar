@@ -270,41 +270,41 @@ cooking_ingredient (c-ares
 
 # Prefer the install tree; fall back to xdp-tools/libbpf build dirs when the
 # install step didn't run (e.g. SYSTEM_LIBXDP=y on the other machine).
-#set (xdp_install_dir ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/install)
-#set (xdp_build_libxdp ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/xdp-tools/lib/libxdp)
-#set (xdp_build_libbpf ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/libbpf/src)
+set (xdp_install_dir ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/install)
+set (xdp_build_libxdp ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/xdp-tools/lib/libxdp)
+set (xdp_build_libbpf ${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/lib/libbpf/src)
 
-#if (EXISTS "${xdp_install_dir}/lib/libxdp.a")
-#  set (xdp_libdir "${xdp_install_dir}/lib")
-#  set (xdp_incdir  "${xdp_install_dir}/include")
-#else ()
-#  set (xdp_libdir "${xdp_build_libxdp}")
-#  set (xdp_incdir  "${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/headers")
-#endif ()
+if (EXISTS "${xdp_install_dir}/lib/libxdp.a")
+  set (xdp_libdir "${xdp_install_dir}/lib")
+  set (xdp_incdir  "${xdp_install_dir}/include")
+else ()
+  set (xdp_libdir "${xdp_build_libxdp}")
+  set (xdp_incdir  "${CMAKE_CURRENT_SOURCE_DIR}/../xdp-tutorial/headers")
+endif ()
 
-#if (EXISTS "${xdp_install_dir}/lib/libbpf.a")
-#  set (bpf_libdir "${xdp_install_dir}/lib")
-#  set (bpf_incdir  "${xdp_install_dir}/include")
-#else ()
-#  set (bpf_libdir "${xdp_build_libbpf}")
-#  set (bpf_incdir  "${xdp_build_libbpf}")
-#endif ()
+if (EXISTS "${xdp_install_dir}/lib/libbpf.a")
+  set (bpf_libdir "${xdp_install_dir}/lib")
+  set (bpf_incdir  "${xdp_install_dir}/include")
+else ()
+  set (bpf_libdir "${xdp_build_libbpf}")
+  set (bpf_incdir  "${xdp_build_libbpf}")
+endif ()
 
-#set (dpdk_pkgconfig_dir ${CMAKE_CURRENT_BINARY_DIR}/dpdk_pkgconfig_generated)
-#file (MAKE_DIRECTORY ${dpdk_pkgconfig_dir})
-#file (WRITE ${dpdk_pkgconfig_dir}/libbpf.pc
-#  "Name: libbpf\nDescription: BPF library\nVersion: 1.6.2\n"
-#  "Libs: -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${bpf_incdir}\n")
-#  #  "Libs: ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${bpf_incdir}\n")
-#file (WRITE ${dpdk_pkgconfig_dir}/libxdp.pc
-#  "Name: libxdp\nDescription: XDP library\nVersion: 1.5.6\n"
-#  #  "Libs: ${xdp_libdir}/libxdp.a ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${xdp_incdir}\n")
-#  "Libs: -L${xdp_libdir} -lxdp -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${xdp_incdir}\n")
-#set (dpdk_pkg_config_path ${dpdk_pkgconfig_dir}:/usr/lib64/pkgconfig)
+set (dpdk_pkgconfig_dir ${CMAKE_CURRENT_BINARY_DIR}/dpdk_pkgconfig_generated)
+file (MAKE_DIRECTORY ${dpdk_pkgconfig_dir})
+file (WRITE ${dpdk_pkgconfig_dir}/libbpf.pc
+  "Name: libbpf\nDescription: BPF library\nVersion: 1.6.2\n"
+  "Libs: -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${bpf_incdir}\n")
+  #  "Libs: ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${bpf_incdir}\n")
+file (WRITE ${dpdk_pkgconfig_dir}/libxdp.pc
+  "Name: libxdp\nDescription: XDP library\nVersion: 1.5.6\n"
+  #  "Libs: ${xdp_libdir}/libxdp.a ${bpf_libdir}/libbpf.a -lelf -lz\nCflags: -I${xdp_incdir}\n")
+  "Libs: -L${xdp_libdir} -lxdp -L${bpf_libdir} -lbpf -lelf -lz\nCflags: -I${xdp_incdir}\n")
+set (dpdk_pkg_config_path ${dpdk_pkgconfig_dir}:/usr/lib64/pkgconfig)
 
 set (dpdk_args
   --default-library=static
-  #  "-Dc_args=-Wno-error -I${xdp_incdir}"
+  "-Dc_args=-I${xdp_incdir}"
   -Denable_docs=false
   -Denable_apps=dpdk-testpmd
   -Dtests=false
@@ -335,8 +335,8 @@ cooking_ingredient (dpdk
   EXTERNAL_PROJECT_ARGS
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dpdk
     CONFIGURE_COMMAND
-    	env CC=${CMAKE_C_COMPILER} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
-    #      env CC=${CMAKE_C_COMPILER} PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
+    #	env CC=${CMAKE_C_COMPILER} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
+    	env CC=${CMAKE_C_COMPILER} PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Meson_EXECUTABLE} setup ${dpdk_args} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
     BUILD_COMMAND
     	${Ninja_EXECUTABLE} -C <BINARY_DIR>
     #  env PKG_CONFIG_PATH=${dpdk_pkg_config_path} ${Ninja_EXECUTABLE} -C <BINARY_DIR>
