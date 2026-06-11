@@ -43,6 +43,11 @@
 
 namespace seastar {
 
+extern thread_local uint64_t sent_to_dpdk_device;
+extern thread_local uint64_t received_from_dpdk_device;
+extern thread_local uint64_t dpdk_device_rx_polled;
+extern thread_local uint64_t tx_polled;
+
 inline
 bool is_ip_unspecified(const ipv4_addr& addr) noexcept {
     return addr.is_ip_unspecified();
@@ -506,13 +511,12 @@ public:
     virtual tcp_counters get_tcp_counters() const noexcept { return {}; }
 
     struct dpdk_port_stats {
-        uint64_t ipackets  = 0; ///< successfully received packets
-        uint64_t opackets  = 0; ///< successfully transmitted packets
-        uint64_t ibytes    = 0; ///< successfully received bytes
-        uint64_t obytes    = 0; ///< successfully transmitted bytes
+        uint64_t q_ipackets  = 0; ///< successfully received packets
+        uint64_t q_opackets  = 0; ///< successfully transmitted packets
+        uint64_t q_ibytes    = 0; ///< successfully received bytes
+        uint64_t q_obytes    = 0; ///< successfully transmitted bytes
         uint64_t imissed   = 0; ///< Rx drops: no descriptor / AF_XDP fill-ring full
-        uint64_t ierrors   = 0; ///< erroneous received packets
-        uint64_t oerrors   = 0; ///< failed transmitted packets
+        uint64_t q_errors   = 0; ///< erroneous received packets
         uint64_t rx_nombuf = 0; ///< Rx mbuf allocation failures
     };
     virtual dpdk_port_stats get_dpdk_port_stats() const noexcept { return {}; }

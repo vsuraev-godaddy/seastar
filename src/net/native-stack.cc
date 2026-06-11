@@ -220,7 +220,7 @@ public:
     virtual dpdk_port_stats get_dpdk_port_stats() const noexcept override {
         rte_eth_stats s = {};
         rte_eth_stats_get(0, &s);
-        return {s.ipackets, s.opackets, s.ibytes, s.obytes, s.imissed, s.ierrors, s.oerrors, s.rx_nombuf};
+        return {s.q_ipackets[this_shard_id()], s.q_opackets[this_shard_id()], s.q_ibytes[this_shard_id()], s.q_obytes[this_shard_id()], s.imissed, s.q_errors[this_shard_id()], s.rx_nombuf};
     }
 #endif
 };

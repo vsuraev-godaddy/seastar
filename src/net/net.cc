@@ -82,10 +82,13 @@ ipv4_addr::ipv4_addr(const ::in_addr& in, uint16_t p) noexcept
     : ip(net::ntoh(in.s_addr)), port(p)
 {}
 
+thread_local uint64_t tx_polled = 0;
+
 namespace net {
 
 inline
 bool qp::poll_tx() {
+    tx_polled++;
     if (_tx_packetq.size() < 16) {
         // refill send queue from upper layers
         uint32_t work;

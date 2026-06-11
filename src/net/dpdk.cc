@@ -124,10 +124,14 @@ using namespace seastar::net;
 
 namespace seastar {
 
+thread_local uint64_t sent_to_dpdk_device = 0;
+thread_local uint64_t received_from_dpdk_device = 0;
+thread_local uint64_t dpdk_device_rx_polled = 0;
+
 namespace dpdk {
 
 /******************* Net device related constatns *****************************/
-static constexpr uint16_t default_ring_size      = 512;
+static constexpr uint16_t default_ring_size      = 2048;
 
 //
 // For standard PMDs: 2× ring_size is enough because the PMD refills in
@@ -1300,7 +1304,7 @@ private:
         uint16_t sent = rte_eth_tx_burst(_dev->port_idx(), _qid,
                                          _tx_burst.data() + _tx_burst_idx,
                                          _tx_burst.size() - _tx_burst_idx);
-
+	sent_to_dpdk_device += sent;
         uint64_t nr_frags = 0, bytes = 0;
 
         for (int i = 0; i < sent; i++) {
@@ -2210,13 +2214,14 @@ template <bool HugetlbfsMemBackend>
 bool dpdk_qp<HugetlbfsMemBackend>::poll_rx_once()
 {
     struct rte_mbuf *buf[packet_read_size];
-
+    dpdk_device_rx_polled++;
     /* read a port */
     uint16_t rx_count = rte_eth_rx_burst(_dev->port_idx(), _qid,
                                          buf, packet_read_size);
 
     /* Now process the NIC packets read */
     if (likely(rx_count > 0)) {
+	received_from_dpdk_device +=rx_count;
         process_packets(buf, rx_count);
     }
 
