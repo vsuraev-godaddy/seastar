@@ -47,6 +47,8 @@ extern thread_local uint64_t sent_to_dpdk_device;
 extern thread_local uint64_t received_from_dpdk_device;
 extern thread_local uint64_t dpdk_device_rx_polled;
 extern thread_local uint64_t tx_polled;
+extern thread_local uint64_t same_core_packets;
+extern thread_local uint64_t x_core_packets;
 
 inline
 bool is_ip_unspecified(const ipv4_addr& addr) noexcept {

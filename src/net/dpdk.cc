@@ -133,6 +133,8 @@ namespace seastar {
 thread_local uint64_t sent_to_dpdk_device = 0;
 thread_local uint64_t received_from_dpdk_device = 0;
 thread_local uint64_t dpdk_device_rx_polled = 0;
+thread_local uint64_t same_core_packets = 0;
+thread_local uint64_t x_core_packets = 0;
 
 namespace dpdk {
 
@@ -2242,7 +2244,6 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
         if (m->ol_flags & RTE_MBUF_F_RX_RSS_HASH) {
             (*p).set_rss_hash(m->hash.rss);
         }
-
         bool forwarded = false;
         if (g_port_to_shard_fn) {
             if (auto dst = tcp_dst_port_from_packet(*p)) {
@@ -2255,12 +2256,14 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
                         [dev = _dev, fwd = std::move(fwd)]() mutable {
                             dev->l2receive(std::move(fwd));
                         });
+		    x_core_packets++;
                     forwarded = true;
                 }
             }
         }
         if (!forwarded) {
             _dev->l2receive(std::move(*p));
+	    same_core_packets++;
         }
     }
 
