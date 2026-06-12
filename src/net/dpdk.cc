@@ -71,6 +71,13 @@ module seastar;
 #include "core/vla.hh"
 #endif
 
+// Packet header parsing helpers from the xdp-tutorial library.
+// Handles VLAN tags (802.1Q/802.1AD up to VLAN_MAX_DEPTH levels) and
+// variable-length IPv4/TCP options via cursor-based bounds-checked parsing.
+// bpf_htons/bpf_ntohs resolve to __builtin_bswap16 / identity on x86 — same
+// semantics as htons/ntohs but using GCC intrinsics.
+#include <xdp/parsing_helpers.h>
+
 #if RTE_VERSION <= RTE_VERSION_NUM(2,0,0,16)
 
 static
@@ -129,6 +136,15 @@ thread_local uint64_t received_from_dpdk_device = 0;
 thread_local uint64_t dpdk_device_rx_polled = 0;
 
 namespace dpdk {
+
+// Cross-shard steering callback.  Receives TCP dst port in host byte order,
+// returns target shard id.  0xFF means "no steering — deliver locally".
+// Set once at startup via set_port_to_shard_fn() before any RX processing.
+static std::function<uint8_t(uint16_t)> g_port_to_shard_fn;
+
+void set_port_to_shard_fn(std::function<uint8_t(uint16_t)> fn) {
+    g_port_to_shard_fn = std::move(fn);
+}
 
 /******************* Net device related constatns *****************************/
 static constexpr uint16_t default_ring_size      = 2048;
@@ -2154,6 +2170,33 @@ bool dpdk_qp<HugetlbfsMemBackend>::rx_gc()
 }
 
 
+// Parse the TCP destination port (host byte order) from the first fragment of
+// a packet starting with an Ethernet header.  Returns nullopt for non-IPv4,
+// non-TCP, or malformed packets.  Only examines the first fragment; DPDK mbuf
+// chains are always contiguous for the headers we care about.
+// Uses parsing_helpers.h so VLAN tags (802.1Q/802.1AD) and variable-length
+// IPv4 options are handled correctly.
+static std::optional<uint16_t> tcp_dst_port_from_packet(const net::packet& p) noexcept {
+    auto frags = p.fragments();
+    if (frags.empty()) return std::nullopt;
+    void* data     = const_cast<char*>(frags.begin()->base);
+    void* data_end = static_cast<char*>(data) + frags.begin()->size;
+
+    struct hdr_cursor nh = { data };
+
+    struct ethhdr* eth;
+    int eth_type = parse_ethhdr(&nh, data_end, &eth);
+    if (eth_type != bpf_htons(ETH_P_IP)) return std::nullopt;
+
+    struct iphdr* iph;
+    if (parse_iphdr(&nh, data_end, &iph) != IPPROTO_TCP) return std::nullopt;
+
+    struct tcphdr* tcph;
+    if (parse_tcphdr(&nh, data_end, &tcph) < 0) return std::nullopt;
+
+    return ntohs(tcph->dest);
+}
+
 template <bool HugetlbfsMemBackend>
 void dpdk_qp<HugetlbfsMemBackend>::process_packets(
     struct rte_mbuf **bufs, uint16_t count)
@@ -2198,7 +2241,25 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
             (*p).set_rss_hash(m->hash.rss);
         }
 
-        _dev->l2receive(std::move(*p));
+        bool forwarded = false;
+        if (g_port_to_shard_fn) {
+            if (auto dst = tcp_dst_port_from_packet(*p)) {
+                uint8_t target = g_port_to_shard_fn(*dst);
+                if (target != 0xFF && target != _qid) {
+                    // Wrap the deleter so it fires back on this shard when the
+                    // packet is eventually freed on the target shard.
+                    auto fwd = p->free_on_cpu(_qid);
+                    (void)smp::submit_to(target,
+                        [dev = _dev, fwd = std::move(fwd)]() mutable {
+                            dev->l2receive(std::move(fwd));
+                        });
+                    forwarded = true;
+                }
+            }
+        }
+        if (!forwarded) {
+            _dev->l2receive(std::move(*p));
+        }
     }
 
     _stats.rx.good.update_pkts_bunch(count);
