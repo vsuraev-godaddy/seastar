@@ -76,7 +76,6 @@ module seastar;
 // variable-length IPv4/TCP options via cursor-based bounds-checked parsing.
 // bpf_htons/bpf_ntohs resolve to __builtin_bswap16 / identity on x86 — same
 // semantics as htons/ntohs but using GCC intrinsics.
-#include <xdp/parsing_helpers.h>
 
 #if RTE_VERSION <= RTE_VERSION_NUM(2,0,0,16)
 
@@ -2177,24 +2176,27 @@ bool dpdk_qp<HugetlbfsMemBackend>::rx_gc()
 // Uses parsing_helpers.h so VLAN tags (802.1Q/802.1AD) and variable-length
 // IPv4 options are handled correctly.
 static std::optional<uint16_t> tcp_dst_port_from_packet(const net::packet& p) noexcept {
-    auto frags = p.fragments();
-    if (frags.empty()) return std::nullopt;
-    void* data     = const_cast<char*>(frags.begin()->base);
-    void* data_end = static_cast<char*>(data) + frags.begin()->size;
+	if (p.nr_frags() == 0) return std::nullopt;
+	auto frags = p.fragments();
+	void* data     = const_cast<char*>(frags.begin()->base);
 
-    struct hdr_cursor nh = { data };
+	// 1. Get Ethernet header
+	struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)data;
+	// 2. Check for IPv4
+	if (rte_be_to_cpu_16(eth_hdr->ether_type) == RTE_ETHER_TYPE_IPV4) {
+		struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr *)(eth_hdr + 1);
 
-    struct ethhdr* eth;
-    int eth_type = parse_ethhdr(&nh, data_end, &eth);
-    if (eth_type != bpf_htons(ETH_P_IP)) return std::nullopt;
+		// 3. Check for TCP
+		if (ipv4_hdr->next_proto_id == IPPROTO_TCP) {
+			// Calculate IPv4 header length dynamically to skip options
+			uint8_t ip_hdr_len = (ipv4_hdr->version_ihl & 0x0F) * 4;
+			struct rte_tcp_hdr *tcp_hdr = (struct rte_tcp_hdr *)((char *)ipv4_hdr + ip_hdr_len);
 
-    struct iphdr* iph;
-    if (parse_iphdr(&nh, data_end, &iph) != IPPROTO_TCP) return std::nullopt;
-
-    struct tcphdr* tcph;
-    if (parse_tcphdr(&nh, data_end, &tcph) < 0) return std::nullopt;
-
-    return ntohs(tcph->dest);
+			// 4. Return Port (Convert from Network Byte Order to Host Byte Order)
+			return rte_be_to_cpu_16(tcp_hdr->dst_port);
+		}
+	}
+	return std::nullopt;
 }
 
 template <bool HugetlbfsMemBackend>
