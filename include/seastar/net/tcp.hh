@@ -2017,6 +2017,13 @@ void tcp<InetTraits>::tcb::retransmit() {
     if (_snd.data.empty()) {
         return;
     }
+
+    // When the peer's receive window is zero the persist timer owns probing;
+    // a data retransmit here would violate the SEASTAR_ASSERT in output_one().
+    if (_snd.window == 0) {
+        return;
+    }
+
     _tcp._data_retransmits++;
 
     // If there are unacked data, retransmit the earliest segment
@@ -2049,7 +2056,7 @@ void tcp<InetTraits>::tcb::retransmit() {
 
 template <typename InetTraits>
 void tcp<InetTraits>::tcb::fast_retransmit() {
-    if (!_snd.data.empty()) {
+    if (!_snd.data.empty() && _snd.window > 0) {
         auto& unacked_seg = _snd.data.front();
         unacked_seg.nr_transmits++;
         retransmit_one();
