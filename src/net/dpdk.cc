@@ -147,6 +147,15 @@ void set_port_to_shard_fn(std::function<uint8_t(uint16_t)> fn) {
     g_port_to_shard_fn = std::move(fn);
 }
 
+// Maximum number of cross-shard packets to accumulate per target shard before
+// flushing.  Reduces smp::submit_to overhead from O(n) to O(shards) per burst.
+// 0 means flush immediately (legacy per-packet behaviour).
+static uint16_t g_xcore_batch_max = 32;
+
+void set_xcore_batch_max(uint16_t n) {
+    g_xcore_batch_max = n;
+}
+
 /******************* Net device related constatns *****************************/
 static constexpr uint16_t default_ring_size      = 2048;
 
@@ -1458,6 +1467,23 @@ private:
     std::vector<rte_mbuf*> _tx_burst;
     uint16_t _tx_burst_idx = 0;
     static constexpr phys_addr_t page_mask = ~(memory::page_size - 1);
+    // Per-target-shard batch buffers for cross-core packet forwarding.
+    // Indexed by shard id (0–255).  Flushed at the end of process_packets()
+    // via a single smp::submit_to per non-empty target, reducing IPC overhead.
+    std::array<std::vector<packet>, 256> _xcore_batch;
+
+    void flush_xcore_batches() {
+        for (uint16_t t = 0; t < 256; ++t) {
+            if (_xcore_batch[t].empty())
+                continue;
+            (void)smp::submit_to(t,
+                [dev = _dev, batch = std::move(_xcore_batch[t])]() mutable {
+                    for (auto& p : batch)
+                        dev->l2receive(std::move(p));
+                });
+            _xcore_batch[t].clear();
+        }
+    }
 };
 
 int dpdk_device::init_port_start()
@@ -2252,10 +2278,16 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
                     // Wrap the deleter so it fires back on this shard when the
                     // packet is eventually freed on the target shard.
                     auto fwd = p->free_on_cpu(_qid);
-                    (void)smp::submit_to(target,
-                        [dev = _dev, fwd = std::move(fwd)]() mutable {
-                            dev->l2receive(std::move(fwd));
-                        });
+                    if (g_xcore_batch_max == 0) {
+                        (void)smp::submit_to(target,
+                            [dev = _dev, fwd = std::move(fwd)]() mutable {
+                                dev->l2receive(std::move(fwd));
+                            });
+                    } else {
+                        _xcore_batch[target].push_back(std::move(fwd));
+                        if (_xcore_batch[target].size() >= g_xcore_batch_max)
+                            flush_xcore_batches();
+                    }
 		    x_core_packets++;
                     forwarded = true;
                 }
@@ -2266,6 +2298,8 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
 	    same_core_packets++;
         }
     }
+
+    flush_xcore_batches();
 
     _stats.rx.good.update_pkts_bunch(count);
     _stats.rx.good.update_frags_stats(nr_frags, bytes);

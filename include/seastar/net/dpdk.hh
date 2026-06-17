@@ -81,6 +81,14 @@ uint32_t qp_mempool_obj_size(bool hugetlbfs_membackend);
  * first packet is received.
  */
 void set_port_to_shard_fn(std::function<uint8_t(uint16_t)> fn);
+
+/**
+ * Set the maximum number of cross-shard packets to batch per target shard
+ * before flushing to smp::submit_to.  Reduces per-packet IPC overhead.
+ * 0 = flush immediately (legacy behaviour).  Default = 32.
+ * Must be called before RX processing starts or from shard 0.
+ */
+void set_xcore_batch_max(uint16_t n);
 }
 
 /// \endcond
