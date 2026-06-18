@@ -193,7 +193,15 @@ public:
                                               h(ip, p, true);
                                           })
                                     : std::function<void(uint32_t, uint16_t)>{}));
-        return _conn->connected().then([conn = _conn, hook = std::move(hook), registered]() mutable {
+        return _conn->connected().then_wrapped([conn = _conn, hook = std::move(hook), registered](future<> fut) mutable {
+            if (fut.failed()) {
+                // Connection failed after the port-acquired hook already fired (XDP rule added).
+                // native_connected_socket_impl will never be created, so we must remove the rule here.
+                if (hook && registered->second != 0) {
+                    hook(registered->first, registered->second, false);
+                }
+                return make_exception_future<connected_socket>(fut.get_exception());
+            }
             auto csi = std::make_unique<native_connected_socket_impl<Protocol>>(
                 std::move(conn), hook, registered->first, registered->second);
             return make_ready_future<connected_socket>(connected_socket(std::move(csi)));
