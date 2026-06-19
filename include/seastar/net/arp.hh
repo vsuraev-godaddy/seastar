@@ -23,6 +23,7 @@
 #pragma once
 
 #ifndef SEASTAR_MODULE
+#include <sstream>
 #include <unordered_map>
 #endif
 #include <seastar/net/net.hh>
@@ -204,7 +205,8 @@ public:
 
 class arp_timeout_error : public arp_error {
 public:
-    arp_timeout_error() : arp_error("ARP timeout") {}
+    explicit arp_timeout_error(const std::string& addr)
+        : arp_error("ARP timeout resolving " + addr) {}
 };
 
 class arp_queue_full_error : public arp_error {
@@ -227,8 +229,11 @@ arp_for<L3>::lookup(const l3addr& paddr) {
         res._timeout_timer.set_callback([paddr, this, &res] {
             // FIXME: future is discarded
             (void)send_query(paddr);
+            std::ostringstream oss;
+            oss << paddr;
+            auto addr_str = oss.str();
             for (auto& w : res._waiters) {
-                w.set_exception(arp_timeout_error());
+                w.set_exception(arp_timeout_error(addr_str));
             }
             res._waiters.clear();
         });
