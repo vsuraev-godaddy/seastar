@@ -192,6 +192,9 @@ public:
     void arp_learn(ethernet_address l2, ipv4_address l3) {
         _inet.learn(l2, l3);
     }
+    void enable_arp_passive_learning(bool enable){
+	    _inet.enable_arp_passive_learning(enable);
+    }
     friend class native_server_socket_impl<tcp4>;
 
     class native_network_interface;
@@ -354,7 +357,7 @@ void arp_enable_passive_learning(bool enable)
 {
     (void)smp::invoke_on_all([enable] {
         auto& ns = static_cast<native_network_stack&>(engine().net());
-        ns._inet.enable_arp_passive_learning(enable);
+        ns.enable_arp_passive_learning(enable);
     });
 }
 
