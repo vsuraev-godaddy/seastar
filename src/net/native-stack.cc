@@ -350,6 +350,14 @@ void arp_learn(ethernet_address l2, ipv4_address l3)
     });
 }
 
+void arp_enable_passive_learning(bool enable)
+{
+    (void)smp::invoke_on_all([enable] {
+        auto& ns = static_cast<native_network_stack&>(engine().net());
+        ns._inet.enable_arp_passive_learning(enable);
+    });
+}
+
 void create_native_stack(const native_stack_options& opts, std::shared_ptr<device> dev) {
     native_network_stack::ready_promise.set_value(std::unique_ptr<network_stack>(std::make_unique<native_network_stack>(opts, std::move(dev))));
 }

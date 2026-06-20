@@ -357,6 +357,9 @@ public:
     void learn(ethernet_address l2, ipv4_address l3) {
         _arp.learn(l2, l3);
     }
+    void enable_arp_passive_learning(bool enable) {
+        _arp.enable_passive_learning(enable);
+    }
     void register_packet_provider(ipv4_traits::packet_provider_type&& func) {
         _pkt_providers.push_back(std::move(func));
     }
@@ -418,6 +421,7 @@ struct l4connid<InetTraits>::connid_hash : private std::hash<ipaddr>, private st
 };
 
 void arp_learn(ethernet_address l2, ipv4_address l3);
+void arp_enable_passive_learning(bool enable);
 
 }
 
